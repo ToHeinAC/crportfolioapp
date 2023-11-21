@@ -1,0 +1,38 @@
+#Executable
+pyinstaller --onefile Converter.py
+
+#Virtual Environment
+python -m venv venv
+venv\Scripts\activate
+
+#Python Packages
+python -m pip freeze > requirements.txt
+
+#Gitlab
+git init
+git add .
+git commit -m "first commit"
+# Set a new remote
+git remote add origin https://github.com/OWNER/REPOSITORY.git
+# Verify new remote
+git remote -v
+# Push to remote
+git push -u origin master
+# Fetch from upstream
+git fetch upstream
+git merge upstream/master
+
+#venv handling
+freeze requirements: go to "venv\Scripts" then "python -m pip freeze -l > ..\..\requirements.txt"
+install packages: pip install -r requirements.txt
+
+#Git version control and heroku
+git init
+heroku login
+heroku create tobihein-streamlit-example
+git add .
+git commit -m "first commit"
+git push heroku master
+heroku ps:scale web=1  #free app!
+heroku logs --tail #troubleshooting
+heroku run app console #troubleshooting

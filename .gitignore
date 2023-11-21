@@ -1,0 +1,6 @@
+# .gitignore
+stvenv
+__pycache__
+*.ipynb
+*.db
+
