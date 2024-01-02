@@ -8,12 +8,14 @@ import plotly.graph_objects as go
 import plotly.express as px
 import yfinance as yf
 import appdirs as ad
-#from binance.client import Client
 #from pandas_datareader import data as pdr
 #yf.pdr_override() # <== that's all it takes :-)
-ad.user_cache_dir = lambda *args: "/tmp"
+binance=False
+if binance:
+    from binance.client import Client
+    client = Client()
 
-#client = Client()
+ad.user_cache_dir = lambda *args: "/tmp"
 
 #assets = pd.read_excel('crassets.xlsx',index_col=0)
 
@@ -154,8 +156,10 @@ lb = (today-fstart).days
 #st.write(f'Lookback time is {lb} days.')
 #st.write(dropdown)
 
-#data = get_data(pairs,fstart,str(lb))
-data = get_data2(pairs2)
+if binance:
+    data = get_data(pairs,fstart,str(lb))
+else:
+    data = get_data2(pairs2)
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]
