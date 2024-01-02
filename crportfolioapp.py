@@ -127,7 +127,7 @@ def get_data(pairs,start,lb):
     return data
 
 @st.cache_data(show_spinner=False)
-def get_data2(pairs,start,end):
+def get_data2(pairs,period='5y'):
     data=[]
     progress_text = "Running...(fetch the data)"
     my_bar = st.progress(0.0, text=progress_text)
@@ -137,8 +137,8 @@ def get_data2(pairs,start,end):
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
         #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
-        fetch = yf.download(item, start=start, end=end)#yahoo finance
-        st.dataframe(fetch)
+        fetch = yf.download(item, period=period)#yahoo finance
+        #st.dataframe(fetch)
         data.append(fetch)
         percent_complete+=1.0/len_pairs 
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
@@ -155,7 +155,7 @@ lb = (today-fstart).days
 #st.write(dropdown)
 
 #data = get_data(pairs,fstart,str(lb))
-data = get_data2(pairs2,'2023-01-01','2024-01-02')
+data = get_data2(pairs2)
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]
