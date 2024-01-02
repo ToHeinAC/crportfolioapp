@@ -7,6 +7,11 @@ import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
+import yfinance as yf
+from pandas_datareader import data as pdr
+import appdirs as ad
+yf.pdr_override() # <== that's all it takes :-)
+ad.user_cache_dir = lambda *args: "/tmp"
 
 client = Client()
 
@@ -38,6 +43,15 @@ with st.expander("Portfolio Data File"):
     
 coins = [str(assets.index[i]) for i in range(len(assets.index))]
 pairs = [coins[i] + 'USDT' for i in range(len(coins))]
+pairs2 = [coins[i] + '-USD' for i in range(len(coins))]
+
+def replace_entry_by_name(lst, name_to_replace, new_entry):
+    for i, entry in enumerate(lst):
+        if entry == name_to_replace:
+            lst[i] = new_entry
+    return lst
+    
+pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
@@ -105,22 +119,43 @@ def get_data(pairs,start,lb):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        data.append(getdata(item, lookback=lb).set_index('Time'))
+        data.append(getdata(item, lookback=lb).set_index('Time'))#binance
         percent_complete+=1.0/len_pairs 
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
         #latest_iteration.text(f'{round(percent_complete*100,1)}%')
     my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
     return data
 
-fstart=pd.to_datetime('2022-01-12').date()
+@st.cache_data(show_spinner=False)
+def get_data2(pairs,start,end):
+    data=[]
+    progress_text = "Running...(fetch the data)"
+    my_bar = st.progress(0.0, text=progress_text)
+    len_pairs=len(pairs)
+    percent_complete = 0.0
+    #latest_iteration = st.empty()
+    my_bar.progress(percent_complete, text=progress_text)
+    for item in pairs:
+        fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
+        #fetch = yf.download(item, start=start, end=end)#pandas datareader with yahoo finance
+        st.dataframe(fetch)
+        data.append(fetch)
+        percent_complete+=1.0/len_pairs 
+        my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
+        #latest_iteration.text(f'{round(percent_complete*100,1)}%')
+    my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
+    return data
+
+fstart=pd.to_datetime('2023-01-01').date()
 fend=pd.to_datetime('today').date()
 
 today = pd.to_datetime('today').date()
 lb = (today-fstart).days
 #st.write(f'Lookback time is {lb} days.')
 #st.write(dropdown)
-        
-data = get_data(pairs,fstart,str(lb))
+
+#data = get_data(pairs,fstart,str(lb))
+data = get_data2(pairs2,fstart,fend)
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]

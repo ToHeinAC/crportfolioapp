@@ -5,3 +5,4 @@ python-binance==0.7.5
 SQLAlchemy==2.0.23
 streamlit==1.28.2
 streamlit-option-menu==0.3.6
+yfinance==0.2.12
