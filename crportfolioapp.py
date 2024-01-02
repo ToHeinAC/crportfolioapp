@@ -13,7 +13,7 @@ import appdirs as ad
 #yf.pdr_override() # <== that's all it takes :-)
 ad.user_cache_dir = lambda *args: "/tmp"
 
-client = Client()
+#client = Client()
 
 #assets = pd.read_excel('crassets.xlsx',index_col=0)
 
