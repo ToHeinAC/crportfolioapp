@@ -2,14 +2,14 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
 from sqlalchemy import create_engine
-#from binance.client import Client
 import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 import yfinance as yf
-#from pandas_datareader import data as pdr
 import appdirs as ad
+#from binance.client import Client
+#from pandas_datareader import data as pdr
 #yf.pdr_override() # <== that's all it takes :-)
 ad.user_cache_dir = lambda *args: "/tmp"
 
@@ -155,7 +155,7 @@ lb = (today-fstart).days
 #st.write(dropdown)
 
 #data = get_data(pairs,fstart,str(lb))
-data = get_data2(pairs2,fstart,fend)
+data = get_data2(pairs2,'2023-01-01','2024-01-02')
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]
