@@ -3,4 +3,5 @@ stvenv
 __pycache__
 *.ipynb
 *.db
+crassets.xlsx
 
