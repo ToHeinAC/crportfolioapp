@@ -2,15 +2,15 @@ import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
 from sqlalchemy import create_engine
-from binance.client import Client
+#from binance.client import Client
 import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.express as px
 import yfinance as yf
-from pandas_datareader import data as pdr
+#from pandas_datareader import data as pdr
 import appdirs as ad
-yf.pdr_override() # <== that's all it takes :-)
+#yf.pdr_override() # <== that's all it takes :-)
 ad.user_cache_dir = lambda *args: "/tmp"
 
 client = Client()
@@ -136,8 +136,8 @@ def get_data2(pairs,start,end):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
-        #fetch = yf.download(item, start=start, end=end)#pandas datareader with yahoo finance
+        #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
+        fetch = yf.download(item, start=start, end=end)#yahoo finance
         st.dataframe(fetch)
         data.append(fetch)
         percent_complete+=1.0/len_pairs 
