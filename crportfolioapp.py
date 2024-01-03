@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import plotly.express as px
 import yfinance as yf
 import appdirs as ad
@@ -380,7 +381,7 @@ def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date
     aggregated_values = asset_value_with_category.groupby('Kategorie').sum()
     
     # Normalize each category's current value by the first value in the category
-    normalized_values = aggregated_values.T / aggregated_values.iloc[:,0] -1
+    normalized_values = aggregated_values.T / aggregated_values.iloc[:,0]
     
     #color mapping
     cm = {unit: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, unit in enumerate(normalized_values.columns.values)}
@@ -475,58 +476,59 @@ if selected == 'OHCL Single Asset':
     start = col3.date_input('Start', pd.to_datetime('2023-01-01'))
     end = col4.date_input('End', pd.to_datetime('today'))
     dropdown =col5.selectbox('Pick your asset',pairs)
-
-    def generate_ohlc_chartplotly(symbol,data,start=start,end=end):
+        
+    def generate_ohlc_chartplotly(symbol, data, start=None, end=None):
         # Calculate moving averages
         data['MA_20'] = data['Close'].rolling(window=20).mean()
         data['MA_200'] = data['Close'].rolling(window=200).mean()
         data['MA_50'] = data['Close'].rolling(window=50).mean()
-    
+
         # Calculate Bollinger Bands
         data['std'] = data['Close'].rolling(window=20).std()
         data['upper_band'] = data['MA_20'] + (data['std'] * 2)
         data['lower_band'] = data['MA_20'] - (data['std'] * 2)
-    
+
         mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
-        stock_data=data.loc[mask]
-        # Create the figure and add candlestick trace
-        fig = go.Figure(data=[go.Candlestick(x=stock_data.index,
-                                             open=stock_data['Open'],
-                                             high=stock_data['High'],
-                                             low=stock_data['Low'],
-                                             close=stock_data['Close'],
-                                             name='OHLC')],)
-                       #layout_xaxis_range=[start,end])
-    
-        # Add Bollinger Bands trace
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['upper_band'], mode='lines', name='Upper Band', line=dict(color='green')))
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['lower_band'], mode='lines', name='Lower Band', line=dict(color='red')))
-    
-        # Add moving averages traces
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_200'], mode='lines', name='200-day Moving Average', line=dict(color='blue')))
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_50'], mode='lines', name='50-day Moving Average', line=dict(color='orange')))
-    
-        # Set layout and show the chart
-        perfpercent=round((stock_data['Close'][-1]/stock_data['Close'][0]-1.0)*100,1)
-        fig.update_layout(title=f'{symbol} OHLC Chart - Performance: {perfpercent}%', xaxis_rangeslider_visible=False)
+        stock_data = data.loc[mask]
+
+        # Create subplots with shared x-axis
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.01, row_heights=[0.7, 0.3])
+
+        # Add candlestick trace to the first subplot
+        fig.add_trace(go.Candlestick(x=stock_data.index,
+                                     open=stock_data['Open'],
+                                     high=stock_data['High'],
+                                     low=stock_data['Low'],
+                                     close=stock_data['Close'],
+                                     name='OHLC'), row=1, col=1)
+
+        # Add Bollinger Bands traces to the first subplot
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['upper_band'], mode='lines', name='Upper Band', line=dict(color='green')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['lower_band'], mode='lines', name='Lower Band', line=dict(color='red')), row=1, col=1)
+
+        # Add moving averages traces to the first subplot
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_200'], mode='lines', name='200-day Moving Average', line=dict(color='blue')), row=1, col=1)
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_50'], mode='lines', name='50-day Moving Average', line=dict(color='orange')), row=1, col=1)
+
+        # Add Volume subplot to the second subplot
+        fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
+
+        # Update layout
         fig.update_layout(
-        legend=dict(
-            x=0,
-            y=1,
-            traceorder="normal",
-            font=dict(
-                family="sans-serif",
-                size=8
-                #color="black"
-            ),
-        ))
-        fig.update_layout(autosize=True)
-        #fig.update_layout(
-        #autosize=True,
-        #width=1000,
-        #height=600)
+            xaxis_rangeslider_visible=False,
+            title=f'{symbol} OHLC Chart',
+            #xaxis=dict(title='Date'),
+            yaxis=dict(title='Price'),
+            yaxis2=dict(title='Volume', anchor='x', side='bottom'),
+            legend=dict(x=0, y=1, traceorder="normal", font=dict(family="sans-serif", size=8)),
+            height=600  # Adjust the height as needed
+        )
+
+        # Calculate performance percentage
+        perf_percent = round((stock_data['Close'][-1] / stock_data['Close'][0] - 1.0) * 100, 1)
+        fig.update_layout(title=f'{symbol} OHLC Chart - Performance: {perf_percent}%', xaxis_rangeslider_visible=False)
+        #fig.update_layout(autosize=True)
         st.plotly_chart(fig, use_container_width=True)
-        #fig.show()
         
     datafiltered=[j for i, j in zip(pairs, data) if i==dropdown][0] 
     generate_ohlc_chartplotly(dropdown,datafiltered,start=start,end=end)
