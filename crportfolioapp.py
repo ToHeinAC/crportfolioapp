@@ -20,7 +20,7 @@ ad.user_cache_dir = lambda *args: "/tmp"
 
 #assets = pd.read_excel('crassets.xlsx',index_col=0)
 
-st.title('My Crypto Dashboard :rocket:')
+st.title('Crypto Dashboard :rocket:')
 
 with st.sidebar:
     selected = option_menu(
