@@ -17,7 +17,7 @@ if binance:
     client = Client()
 
 ad.user_cache_dir = lambda *args: "/tmp"
-
+st.cache_data.clear()
 #assets = pd.read_excel('crassets.xlsx',index_col=0)
 
 st.title('Crypto Dashboard :rocket:')
