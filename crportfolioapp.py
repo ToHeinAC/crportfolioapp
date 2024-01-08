@@ -58,6 +58,7 @@ pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
+@st.cache_data
 def getdata(pair, lookback='365'):
     #print(pair)
     frame = pd.DataFrame(client.get_historical_klines(pair, '1d', lookback + ' days ago UTC'))
