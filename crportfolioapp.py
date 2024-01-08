@@ -34,10 +34,6 @@ def load_assets(file):
     return assets
     
 with st.expander("Portfolio Data File"):
-    if st.button("Clear All"):
-        # Clear values from *all* all in-memory and on-disk data caches:
-        # i.e. clear values from both square and cube
-        st.cache_data.clear()
     upload = st.file_uploader('Upload the portfolio assets .xlsx file!')
     if upload is None:
         st.info("Upload a assets .xlsx file", icon = 'ℹ️')
@@ -46,12 +42,7 @@ with st.expander("Portfolio Data File"):
     if upload is not None:
         st.success('File uploaded successfully!')
         
-    assets = load_assets(upload)
-    
-    if st.button("Clear All"):
-        # Clear values from *all* all in-memory and on-disk data caches:
-        # i.e. clear values from both square and cube
-        st.cache_data.clear()    
+    assets = load_assets(upload)    
     
 coins = [str(assets.index[i]) for i in range(len(assets.index))]
 pairs = [coins[i] + 'USDT' for i in range(len(coins))]
@@ -171,6 +162,11 @@ if binance:
     data = get_data(pairs,fstart,str(lb))
 else:
     data = get_data2(pairs2)
+    
+if st.button("Clear All Cache"):
+    # Clear values from *all* all in-memory and on-disk data caches:
+    # i.e. clear values from both square and cube
+    st.cache_data.clear()
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]
