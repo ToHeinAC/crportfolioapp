@@ -17,9 +17,9 @@ if binance:
     client = Client()
 
 ad.user_cache_dir = lambda *args: "/tmp"
-st.cache_data.clear()
 #assets = pd.read_excel('crassets.xlsx',index_col=0)
 
+#start app
 st.title('Crypto Dashboard :rocket:')
 
 with st.sidebar:
@@ -28,12 +28,16 @@ with st.sidebar:
         options=["Portfolio","Asset Cats Analysis","OHCL Single Asset"]
     )
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_assets(file):
     assets = pd.read_excel(file,index_col=0)
     return assets
     
 with st.expander("Portfolio Data File"):
+    if st.button("Clear All"):
+        # Clear values from *all* all in-memory and on-disk data caches:
+        # i.e. clear values from both square and cube
+        st.cache_data.clear()
     upload = st.file_uploader('Upload the portfolio assets .xlsx file!')
     if upload is None:
         st.info("Upload a assets .xlsx file", icon = 'ℹ️')
@@ -42,7 +46,12 @@ with st.expander("Portfolio Data File"):
     if upload is not None:
         st.success('File uploaded successfully!')
         
-    assets = load_assets(upload)    
+    assets = load_assets(upload)
+    
+    if st.button("Clear All"):
+        # Clear values from *all* all in-memory and on-disk data caches:
+        # i.e. clear values from both square and cube
+        st.cache_data.clear()    
     
 coins = [str(assets.index[i]) for i in range(len(assets.index))]
 pairs = [coins[i] + 'USDT' for i in range(len(coins))]
@@ -58,7 +67,7 @@ pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def getdata(pair, lookback='365'):
     #print(pair)
     frame = pd.DataFrame(client.get_historical_klines(pair, '1d', lookback + ' days ago UTC'))
