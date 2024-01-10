@@ -360,15 +360,47 @@ def plot_sparkline(data):
     #fig.update_layout(xaxis_title=f'Portfolio last {len(data)} days', yaxis_title='')
     st.plotly_chart(fig ,use_container_width=True)  
 
+#def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
+#    agg_data = dataframe.groupby(category_column).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
+#    sort_data = agg_data.sort_values('Total Value', ascending=False) 
+#        
+#    fig = px.bar(sort_data, x='Kategorie', y='Total Value', text='Total Value',
+#    title='Total Value by Category', labels={'Kategorie': 'Category', 'Total Value': 'Total Value'})
+#
+#    fig.update_traces(texttemplate='%{text:.2s}', textposition='inside')
+#    fig.update_layout(xaxis_title='Category', yaxis_title='Total  Value $',width=800,height=400)   
+#    # Show plot
+#    st.plotly_chart(fig ,use_container_width=True)
+    
 def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
-    agg_data = dataframe.groupby(category_column).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
-    sort_data = agg_data.sort_values('Total Value', ascending=False) 
-        
-    fig = px.bar(sort_data, x='Kategorie', y='Total Value', text='Total Value',
-    title='Total Value by Category', labels={'Kategorie': 'Category', 'Total Value': 'Total Value'})
+    # Calculate total value for each stock in each category
+    agg_data = dataframe.groupby([dataframe.index, category_column]).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
 
-    fig.update_traces(texttemplate='%{text:.2s}', textposition='inside')
-    fig.update_layout(xaxis_title='Category', yaxis_title='Total  Value $',width=800,height=400)   
+    # Pivot the data to prepare for stacked bar chart
+    pivot_data = agg_data.pivot(index='Name', columns=category_column, values='Total Value').fillna(0)
+
+    # Calculate total value for each category and sort in descending order
+    category_total = pivot_data.sum().sort_values(ascending=False).index
+
+    # Sort pivot data columns based on category total value order
+    pivot_data = pivot_data[category_total]
+
+    # Get stock names as the index
+    stock_names = pivot_data.index
+
+    # Create a stacked bar chart
+    fig = go.Figure()
+
+    for stock in pivot_data.index:
+        fig.add_trace(go.Bar(x=pivot_data.columns, y=pivot_data.loc[stock], name=str(stock),
+                             text=pivot_data.loc[stock].apply(lambda val: f'{stock} ${float(f"{val:.2g}"):g}'),
+                             hoverinfo='text', showlegend=False))
+
+    # Update layout and formatting
+    fig.update_layout(title='Total Value by Category - Stacked',
+                      xaxis_title='Category', yaxis_title='Total Value $',
+                      barmode='stack', width=800, height=400)
+
     # Show plot
     st.plotly_chart(fig ,use_container_width=True)
     
