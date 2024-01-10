@@ -372,6 +372,23 @@ def plot_sparkline(data):
 #    # Show plot
 #    st.plotly_chart(fig ,use_container_width=True)
     
+def sizeof_number(number, currency=None):
+    """
+    format values per thousands : K-thousands, M-millions, B-billions. 
+    
+    parameters:
+    -----------
+    number is the number you want to format
+    currency is the prefix that is displayed if provided (€, $, £...)
+    
+    """
+    currency=''if currency is None else currency+''
+    for unit in ['','K','M']:
+        if abs(number) < 1000.0:
+            return f"{currency}{number:6.1f}{unit}"
+        number /= 1000.0
+    return f"{currency}{number:6.1f}B"
+
 def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
     # Calculate total value for each stock in each category
     agg_data = dataframe.groupby([dataframe.index, category_column]).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
@@ -393,15 +410,13 @@ def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity
 
     for stock in pivot_data.index:
         fig.add_trace(go.Bar(x=pivot_data.columns, y=pivot_data.loc[stock], name=str(stock),
-                             text=pivot_data.loc[stock].apply(lambda val: f'{stock} ${float(f"{val:.2g}"):g}'),
-                             hoverinfo='text', showlegend=False, marker=dict(color='blue'),textposition='inside'))
+                             text=pivot_data.loc[stock].apply(lambda val: f'{stock} '+sizeof_number(val, currency='$')),
+                             hoverinfo='text', showlegend=False,marker=dict(color='blue'),textposition='inside'))
 
     # Update layout and formatting
     fig.update_layout(title='Total Value by Category - Stacked',
                       xaxis_title='Category', yaxis_title='Total Value $',
                       barmode='stack', width=800, height=400)
-
-    # Show plot
     st.plotly_chart(fig ,use_container_width=True)
     
 def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date):
