@@ -28,7 +28,7 @@ with st.sidebar:
         options=["Portfolio","Asset Cats Analysis","OHCL Single Asset"]
     )
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl = 3600)
 def load_assets(file):
     assets = pd.read_excel(file,index_col=0)
     return assets
@@ -58,7 +58,7 @@ pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl = 3600)
 def getdata(pair, lookback='365'):
     #print(pair)
     frame = pd.DataFrame(client.get_historical_klines(pair, '1d', lookback + ' days ago UTC'))
@@ -113,7 +113,7 @@ if sql:
     st.dataframe(btc_prices)
 
 #app
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl = 3600)
 def get_data(pairs,start,lb):
     data=[]
     progress_text = "Running...(fetch the data)"
@@ -130,7 +130,7 @@ def get_data(pairs,start,lb):
     my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
     return data
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl = 3600)
 def get_data2(pairs,period='5y'):
     data=[]
     progress_text = "Running...(fetch the data)"
@@ -163,10 +163,10 @@ if binance:
 else:
     data = get_data2(pairs2)
     
-if st.button("Clear All Cache"):
-    # Clear values from *all* all in-memory and on-disk data caches:
-    # i.e. clear values from both square and cube
-    st.cache_data.clear()
+#if st.button("Clear All Cache"):
+#    # Clear values from *all* all in-memory and on-disk data caches:
+#    # i.e. clear values from both square and cube
+#    st.cache_data.clear()
 #st.dataframe(data[0])
 #st.text(len(data[0]))
 lastprices=[]
