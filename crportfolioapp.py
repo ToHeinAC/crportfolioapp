@@ -394,7 +394,7 @@ def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity
     for stock in pivot_data.index:
         fig.add_trace(go.Bar(x=pivot_data.columns, y=pivot_data.loc[stock], name=str(stock),
                              text=pivot_data.loc[stock].apply(lambda val: f'{stock} ${float(f"{val:.2g}"):g}'),
-                             hoverinfo='text', showlegend=False))
+                             hoverinfo='text', showlegend=False, marker=dict(color='blue'),textposition='inside'))
 
     # Update layout and formatting
     fig.update_layout(title='Total Value by Category - Stacked',
