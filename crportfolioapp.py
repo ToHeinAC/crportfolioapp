@@ -419,6 +419,15 @@ def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity
                       barmode='stack', width=800, height=400)
     st.plotly_chart(fig ,use_container_width=True)
     
+def create_custom_treemap(df, category_column, value_column, gainloss_column):
+    df_ = df.reset_index()
+    fig = px.treemap(df_, path=[px.Constant("Portfolio"), category_column, 'Name'], values=value_column,
+                     color=gainloss_column, hover_data=['Name'],
+                     color_continuous_scale='RdYlGn',
+                     color_continuous_midpoint=0)
+    fig.update_layout(margin=dict(t=50, l=25, r=25, b=25))
+    st.plotly_chart(fig ,use_container_width=True)
+    
 def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date):
     # Filter data based on input date range
     prices_subset = prices_df.loc[start_date:end_date]
@@ -485,8 +494,11 @@ if selected == 'Portfolio':
 
 if selected == 'Asset Cats Analysis':
     st.header("Asset Cats Overview :eyeglasses:")
-    
+        
     plot_grouped_bar_chart_with_calculation(assets, 'Kategorie', 'Anzahl', 'Last $')
+    
+    with st.expander("Asset Map"):
+        create_custom_treemap(assets, 'Kategorie', 'Wert $', 'Gain/Loss $')
     
     with st.expander("Asset Cats Comparison"):
         col3, col4 = st.columns(2)
