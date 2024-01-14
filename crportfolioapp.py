@@ -552,6 +552,9 @@ if selected == 'OHCL Single Asset':
         data['std'] = data['Close'].rolling(window=20).std()
         data['upper_band'] = data['MA_20'] + (data['std'] * 2)
         data['lower_band'] = data['MA_20'] - (data['std'] * 2)
+        
+        # Calculate Exponential Moving Average for volume with a window of 5 periods
+        data['V_EMA_5'] = data['Volume'].ewm(span=5, adjust=False).mean()
 
         mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
         stock_data = data.loc[mask]
@@ -577,6 +580,7 @@ if selected == 'OHCL Single Asset':
 
         # Add Volume subplot to the second subplot
         fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['V_EMA_5'], mode='lines', name='V_EMA_5', line=dict(color='black')), row=2, col=1)
 
         # Update layout
         fig.update_layout(
