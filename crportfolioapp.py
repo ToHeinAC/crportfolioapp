@@ -141,10 +141,13 @@ def get_data2(pairs,period='5y'):
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
         #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
+        #st.write(item)
         fetch = yf.download(item, period=period)#yahoo finance
         #st.dataframe(fetch)
         data.append(fetch)
-        percent_complete+=1.0/len_pairs 
+        percent_complete+=1.0/len_pairs
+        if percent_complete > 1.0:
+            percent_complete=1.0            
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
         #latest_iteration.text(f'{round(percent_complete*100,1)}%')
     my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
