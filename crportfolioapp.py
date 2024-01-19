@@ -55,6 +55,7 @@ def replace_entry_by_name(lst, name_to_replace, new_entry):
     return lst
     
 pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
+pairs2 = replace_entry_by_name(pairs2, 'PRIME-USD', 'PRIME23711-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
