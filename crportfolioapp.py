@@ -577,12 +577,12 @@ if selected == 'OHCL Single Asset':
 
         # Calculate Exponential Moving Average for volume with a window of 5 periods
         data['V_EMA_5'] = data['Volume'].ewm(span=5, adjust=False).mean()
-
-        mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
-        stock_data = data.loc[mask]
         
         # Calculate RSI(14)
         data['RSI_14'] = calculate_rsi(data, column='Close', window=14)
+
+        mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
+        stock_data = data.loc[mask]
 
         # Create subplots with shared x-axis
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.015, row_heights=[0.6, 0.2, 0.2])
