@@ -545,7 +545,25 @@ if selected == 'OHCL Single Asset':
     start = col3.date_input('Start', pd.to_datetime('2023-01-01'))
     end = col4.date_input('End', pd.to_datetime('today'))
     dropdown =col5.selectbox('Pick your asset',pairs)
-        
+    
+    def calculate_rsi(data, column='Close', window=14):
+        # Calculate daily price changes
+        delta = data[column].diff(1)
+
+        # Gain and loss for each day
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        # Calculate average gain and average loss over the specified window
+        avg_gain = gain.rolling(window=window, min_periods=1).mean()
+        avg_loss = loss.rolling(window=window, min_periods=1).mean()
+
+        # Calculate Relative Strength (RS) and Relative Strength Index (RSI)
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+    
     def generate_ohlc_chartplotly(symbol, data, start=None, end=None):
         # Calculate moving averages
         data['MA_20'] = data['Close'].rolling(window=20).mean()
@@ -556,15 +574,18 @@ if selected == 'OHCL Single Asset':
         data['std'] = data['Close'].rolling(window=20).std()
         data['upper_band'] = data['MA_20'] + (data['std'] * 2)
         data['lower_band'] = data['MA_20'] - (data['std'] * 2)
-        
+
         # Calculate Exponential Moving Average for volume with a window of 5 periods
         data['V_EMA_5'] = data['Volume'].ewm(span=5, adjust=False).mean()
 
         mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
         stock_data = data.loc[mask]
+        
+        # Calculate RSI(14)
+        data['RSI_14'] = calculate_rsi(data, column='Close', window=14)
 
         # Create subplots with shared x-axis
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.01, row_heights=[0.7, 0.3])
+        fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.015, row_heights=[0.6, 0.2, 0.2])
 
         # Add candlestick trace to the first subplot
         fig.add_trace(go.Candlestick(x=stock_data.index,
@@ -586,6 +607,12 @@ if selected == 'OHCL Single Asset':
         fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
         fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['V_EMA_5'], mode='lines', name='V_EMA_5', line=dict(color='black')), row=2, col=1)
 
+        # Add RSI subplot to the third subplot
+        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['RSI_14'], mode='lines', name='RSI(14)', line=dict(color='orange')), row=3, col=1)
+        fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=30, y1=30, row=3, col=1, line=dict(color='green', width=2), name='RSI 30')
+        fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=70, y1=70, row=3, col=1, line=dict(color='red', width=2), name='RSI 70')
+
+        
         # Update layout
         fig.update_layout(
             xaxis_rangeslider_visible=False,
@@ -593,6 +620,7 @@ if selected == 'OHCL Single Asset':
             #xaxis=dict(title='Date'),
             yaxis=dict(title='Price'),
             yaxis2=dict(title='Volume', anchor='x', side='bottom'),
+            yaxis3=dict(title='RSI(14)', anchor='x', side='left'),
             legend=dict(x=0, y=1, traceorder="normal", font=dict(family="sans-serif", size=8)),
             height=600  # Adjust the height as needed
         )
