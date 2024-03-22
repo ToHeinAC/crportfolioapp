@@ -288,12 +288,14 @@ def plot_port_assetcat(df, sortcol, highest=10, category=None):
     ))
     
     # Update layout
-    if len(df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']])>1:
-        min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
-        max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1
-    else:
-        min_value = min(0,df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min() * 1.1)
-        max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max() * 1.1
+    #if len(df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']])>1:
+    #    min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
+    #    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1
+    #else:
+    #    min_value = min(0,df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min() * 1.1)
+    #    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max() * 1.1
+    min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
+    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1    
     fig.update_layout(
         barmode='group',
         title='Portfolio Investment Analysis',
