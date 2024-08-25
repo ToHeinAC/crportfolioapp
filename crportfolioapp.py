@@ -11,6 +11,9 @@ import yfinance as yf
 import appdirs as ad
 #from pandas_datareader import data as pdr
 #yf.pdr_override() # <== that's all it takes :-)
+from binance.client import Client
+client = Client()
+
 binance=False
 if binance:
     from binance.client import Client
@@ -144,11 +147,26 @@ def get_data2(pairs,period='5y'):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
-        #st.write(item)
-        fetch = yf.download(item, period=period)#yahoo finance
-        #st.dataframe(fetch)
-        data.append(fetch)
+        if item == 'RENDER-USD':
+            frame = pd.DataFrame(client.get_historical_klines('RENDERUSDT', '1d', '365 days ago UTC'))
+            frame = frame.iloc[:,:]
+            frame.columns = ['Time','Open','High','Low','Close','Volume', \
+                             'CloseTime','QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume','Ignored']
+            frame[['Open','High','Low','Close','Volume', \
+                   'QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume']] \
+            = frame[['Open','High','Low','Close','Volume', \
+                   'QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume']].astype(float)
+            frame.Time = pd.to_datetime(frame.Time, unit='ms')
+            frame['Adj Close']=frame['Close']
+            frame=frame[['Time','Open','High','Low','Close','Adj Close','Volume']].set_index('Time')
+            frame = frame.rename_axis('Date')
+            data.append(frame)
+        else:
+            #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
+            #st.write(item)
+            fetch = yf.download(item, period=period)#yahoo finance
+            #st.dataframe(fetch)
+            data.append(fetch)
         percent_complete+=1.0/len_pairs
         if percent_complete > 1.0:
             percent_complete=1.0            
