@@ -3,6 +3,7 @@ from streamlit_option_menu import option_menu
 import pandas as pd
 from sqlalchemy import create_engine
 import datetime
+from datetime import timedelta
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -153,21 +154,6 @@ def get_data2(pairs,period='5y'):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        '''if item == 'RENDER-USD':
-            frame = pd.DataFrame(client.get_historical_klines('RENDERUSDT', '1d', '365 days ago UTC'))
-            frame = frame.iloc[:,:]
-            frame.columns = ['Time','Open','High','Low','Close','Volume', \
-                             'CloseTime','QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume','Ignored']
-            frame[['Open','High','Low','Close','Volume', \
-                   'QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume']] \
-            = frame[['Open','High','Low','Close','Volume', \
-                   'QuoteAssetVolume','Trades','TakerBaseAssetVolume','takerQuoteAssetVolume']].astype(float)
-            frame.Time = pd.to_datetime(frame.Time, unit='ms')
-            frame['Adj Close']=frame['Close']
-            frame=frame[['Time','Open','High','Low','Close','Adj Close','Volume']].set_index('Time')
-            frame = frame.rename_axis('Date')
-            data.append(frame)
-        else:'''
         fetch = yf.download(item, period=period)
         if item == 'RENDER-USD' and len(fetch)==1:
             fetch = extend_dataframe_with_same_dates(fetch)
