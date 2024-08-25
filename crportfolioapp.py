@@ -11,8 +11,6 @@ import yfinance as yf
 import appdirs as ad
 #from pandas_datareader import data as pdr
 #yf.pdr_override() # <== that's all it takes :-)
-from binance.client import Client
-client = Client()
 
 binance=False
 if binance:
@@ -137,6 +135,14 @@ def get_data(pairs,start,lb):
     my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
     return data
 
+def extend_dataframe_with_same_dates(df):
+    last_day = df.index[-1]  # Last date
+    data = df.iloc[-1].values  # Get the last row values
+    # Create a new DataFrame with the same values and index for the last 31 days
+    new_dates = [last_day - timedelta(days=i) for i in range(31)]
+    extended_df = pd.DataFrame([data]*31, columns=df.columns, index=new_dates)
+    return extended_df.sort_index()
+
 @st.cache_data(show_spinner=False, ttl = 3600)
 def get_data2(pairs,period='5y'):
     data=[]
@@ -147,7 +153,7 @@ def get_data2(pairs,period='5y'):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        if item == 'RENDER-USD':
+        '''if item == 'RENDER-USD':
             frame = pd.DataFrame(client.get_historical_klines('RENDERUSDT', '1d', '365 days ago UTC'))
             frame = frame.iloc[:,:]
             frame.columns = ['Time','Open','High','Low','Close','Volume', \
@@ -161,12 +167,12 @@ def get_data2(pairs,period='5y'):
             frame=frame[['Time','Open','High','Low','Close','Adj Close','Volume']].set_index('Time')
             frame = frame.rename_axis('Date')
             data.append(frame)
-        else:
-            #fetch = pdr.get_data_yahoo(item, start=start, end=end)#pandas datareader with yahoo finance
-            #st.write(item)
-            fetch = yf.download(item, period=period)#yahoo finance
-            #st.dataframe(fetch)
-            data.append(fetch)
+        else:'''
+        fetch = yf.download(item, period=period)
+        if item == 'RENDER-USD' and len(fetch)==1:
+            fetch = extend_dataframe_with_same_dates(fetch)
+        #st.dataframe(fetch)
+        data.append(fetch)
         percent_complete+=1.0/len_pairs
         if percent_complete > 1.0:
             percent_complete=1.0            
