@@ -190,9 +190,10 @@ lastprices=[]
 lastweek=[]
 lastmonth=[]
 for i in data:
-    lastprices.append(i['Close'].iloc[-1])
-    lastweek.append(i['Close'].iloc[-7])
-    lastmonth.append(i['Close'].iloc[-30])
+    if not i.empty and 'Close' in i.columns:
+        lastprices.append(i['Close'].iloc[-1])
+        lastweek.append(i['Close'].iloc[-7])
+        lastmonth.append(i['Close'].iloc[-30])
     
 assets['Last $']=lastprices
 assets['Wert $']=assets['Anzahl']*assets['Last $']
