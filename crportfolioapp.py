@@ -146,7 +146,7 @@ def extend_dataframe_with_same_dates(df):
     return extended_df.sort_index()
 
 @st.cache_data(show_spinner=False, ttl = 3600)
-def get_data2(pairs,period='5y'):
+def get_data2(pairs,period='max'):
     data=[]
     progress_text = "Running...(fetch the data)"
     my_bar = st.progress(0.0, text=progress_text)
