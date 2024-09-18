@@ -155,9 +155,12 @@ def get_data2(pairs,period='5y'):
     #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        fetch = yf.download(item, period=period)
-        if item == 'RENDER-USD' and len(fetch)==1:
-            fetch = extend_dataframe_with_same_dates(fetch)
+        if item == 'RENDER-USD': 
+            fetch = yf.download(item, period='5d')
+            if len(fetch)==1:
+                fetch = extend_dataframe_with_same_dates(fetch)
+        else:
+            fetch = yf.download(item, period=period)
         #st.dataframe(fetch)
         data.append(fetch)
         percent_complete+=1.0/len_pairs
