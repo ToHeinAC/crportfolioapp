@@ -63,6 +63,7 @@ pairs2 = replace_entry_by_name(pairs2, 'FORT-USD', 'FORT20622-USD')
 pairs2 = replace_entry_by_name(pairs2, 'JUP-USD', 'JUP29210-USD')
 pairs2 = replace_entry_by_name(pairs2, 'SUI-USD', 'SUI20947-USD')
 pairs2 = replace_entry_by_name(pairs2, 'APT-USD', 'APT21794-USD')
+pairs2 = replace_entry_by_name(pairs2, 'BANANA-USD', 'BANANA28066-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
