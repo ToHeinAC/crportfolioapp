@@ -185,28 +185,68 @@ if binance:
     data = get_data(pairs,fstart,str(lb))
 else:
     data = get_data2(pairs2)
-    
+
 #if st.button("Clear All Cache"):
 #    # Clear values from *all* all in-memory and on-disk data caches:
 #    # i.e. clear values from both square and cube
 #    st.cache_data.clear()
 #st.dataframe(data[0])
 #st.text(len(data[0]))
-lastprices=[]
-lastweek=[]
-lastmonth=[]
-for i in data:
-    if not i.empty and 'Close' in i.columns:
-        lastprices.append(i['Close'].iloc[-1])
-        lastweek.append(i['Close'].iloc[-7])
-        lastmonth.append(i['Close'].iloc[-30])
-    
-assets['Last $']=lastprices
+lastprices = []
+lastweek = []
+lastmonth = []
+failed_symbols = []
+
+for i, symbol in zip(data, pairs2):
+    try:
+        if not i.empty and 'Close' in i.columns:
+            lastprices.append(i['Close'].iloc[-1])
+            lastweek.append(i['Close'].iloc[-7])
+            lastmonth.append(i['Close'].iloc[-30] if len(i) >= 30 else i['Close'].iloc[0])
+        else:
+            # If data is empty or missing Close column, try to fetch it again
+            retry_data = yf.download(symbol, period='7d')
+            if not retry_data.empty and 'Close' in retry_data.columns:
+                lastprices.append(retry_data['Close'].iloc[-1])
+                lastweek.append(retry_data['Close'].iloc[-7] if len(retry_data) >= 7 else retry_data['Close'].iloc[0])
+                lastmonth.append(retry_data['Close'].iloc[-30] if len(retry_data) >= 30 else retry_data['Close'].iloc[0])
+            else:
+                # If retry fails, use the last known price from assets DataFrame if available
+                if 'Last $' in assets.columns:
+                    last_known_price = assets.loc[symbol.split('-')[0], 'Last $']
+                    lastprices.append(last_known_price)
+                    lastweek.append(last_known_price)
+                    lastmonth.append(last_known_price)
+                else:
+                    # If no last known price, use purchase price as fallback
+                    purchase_price = assets.loc[symbol.split('-')[0], 'Kaufpreis $']
+                    lastprices.append(purchase_price)
+                    lastweek.append(purchase_price)
+                    lastmonth.append(purchase_price)
+                failed_symbols.append(symbol)
+    except Exception as e:
+        st.warning(f"Failed to get price for {symbol}: {str(e)}")
+        # Use purchase price as fallback
+        purchase_price = assets.loc[symbol.split('-')[0], 'Kaufpreis $']
+        lastprices.append(purchase_price)
+        lastweek.append(purchase_price)
+        lastmonth.append(purchase_price)
+        failed_symbols.append(symbol)
+
+if failed_symbols:
+    st.warning(f"Could not fetch current prices for: {', '.join(failed_symbols)}. Using fallback prices.")
+
+# Only proceed with the assignment if we have the correct number of prices
+if len(lastprices) == len(assets):
+    assets['Last $'] = lastprices
+    assets['LastWeek $'] = lastweek
+    assets['LastMonth $'] = lastmonth
+else:
+    st.error(f"Price data length mismatch. Expected {len(assets)} prices but got {len(lastprices)}.")
+
 assets['Wert $']=assets['Anzahl']*assets['Last $']
-assets['Lastweek $']=lastweek
-assets['Lastmonth $']=lastmonth
-assets['Wert Lastweek $']=assets['Anzahl']*assets['Lastweek $']
-assets['Wert Lastmonth $']=assets['Anzahl']*assets['Lastmonth $']
+assets['Wert Lastweek $']=assets['Anzahl']*assets['LastWeek $']
+assets['Wert Lastmonth $']=assets['Anzahl']*assets['LastMonth $']
 assets['Gain/Loss $'] = assets['Wert $'] - assets['Invest $']
 
 def plot_investment(actual_value, invest_value, plot_width, plot_height):
@@ -653,5 +693,5 @@ if selected == 'OHCL Single Asset':
         #fig.update_layout(autosize=True)
         st.plotly_chart(fig, use_container_width=True)
         
-    datafiltered=[j for i, j in zip(pairs, data) if i==dropdown][0] 
+    datafiltered=[j for i, j in zip(data, pairs2) if i==dropdown][0] 
     generate_ohlc_chartplotly(dropdown,datafiltered,start=start,end=end)
