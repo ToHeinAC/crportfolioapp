@@ -8,3 +8,4 @@ streamlit-option-menu==0.3.6
 yfinance==0.2.43
 openpyxl==3.1.2
 appdirs==1.4.4
+pycoingecko==3.2.0

@@ -10,6 +10,8 @@ from plotly.subplots import make_subplots
 import plotly.express as px
 import yfinance as yf
 import appdirs as ad
+import requests
+from pycoingecko import CoinGeckoAPI
 #from pandas_datareader import data as pdr
 #yf.pdr_override() # <== that's all it takes :-)
 
@@ -121,23 +123,244 @@ if sql:
     btc_prices = conn.query(f'SELECT * from {pairs[0]}')
     st.dataframe(btc_prices)
 
+# Mapping of crypto symbols to CoinGecko IDs
+crypto_mapping = {
+    'SOL': 'solana',
+    'ATOM': 'cosmos',
+    'LINK': 'chainlink',
+    'ONT': 'ontology',
+    'AAVE': 'aave',
+    'ICP': 'internet-computer',
+    'RAY': 'raydium',
+    'VOXEL': 'voxies',
+    'BOME': 'book-of-meme',
+    'VANRY': 'vanar-chain',
+    'AGLD': 'adventure-gold',
+    'SUPER': 'superfarm',
+    'PHB': 'phoenix-global',
+    'PRIME': 'echelon-prime',
+    'TIA': 'celestia',
+    'INJ': 'injective-protocol',
+    'MDT': 'measurable-data-token',
+    'MPL': 'maple',
+    'AKT': 'akash-network',
+    'SUI': 'sui',
+    'APT': 'aptos',
+    'JTO': 'jito',
+    'TURBO': 'turbos-finance',
+    'FET': 'fetch-ai',
+    'ONDO': 'ondo-finance',
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'USDT': 'tether',
+    'USDC': 'usd-coin',
+    'BNB': 'binancecoin',
+    'XRP': 'ripple',
+    'ADA': 'cardano',
+    'DOGE': 'dogecoin',
+    'MATIC': 'matic-network',
+    'DOT': 'polkadot',
+    'AVAX': 'avalanche-2',
+    'SHIB': 'shiba-inu',
+    'LTC': 'litecoin',
+    'UNI': 'uniswap',
+    'XLM': 'stellar',
+    'XMR': 'monero',
+    'BCH': 'bitcoin-cash',
+    'ALGO': 'algorand',
+    'NEAR': 'near',
+    'RENDER': 'render-token'
+}
+
 #app
 @st.cache_data(show_spinner=False, ttl = 3600)
-def get_data(pairs,start,lb):
-    data=[]
+def get_data2(pairs, period='max'):
+    data = []
     progress_text = "Running...(fetch the data)"
     my_bar = st.progress(0.0, text=progress_text)
-    len_pairs=len(pairs)
+    len_pairs = len(pairs)
     percent_complete = 0.0
-    #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
+    
+    # Initialize CoinGecko API client
+    cg = CoinGeckoAPI()
+    
+    # Debug information
+    debug_info = []
+    
     for item in pairs:
-        data.append(getdata(item, lookback=lb).set_index('Time'))#binance
-        percent_complete+=1.0/len_pairs 
+        # Debug information for this item
+        item_debug = {"symbol": item, "yahoo_success": False, "coingecko_success": False}
+        
+        # Try Yahoo Finance first
+        try:
+            if item == 'RENDER-USD': 
+                fetch = yf.download(item, period='5d')
+                if len(fetch) <= 1:
+                    fetch = extend_dataframe_with_same_dates(fetch)
+            else:
+                fetch = yf.download(item, period=period)
+            
+            # Check if Yahoo Finance returned valid data
+            if len(fetch) > 1 and not fetch.empty and not fetch['Close'].isnull().all():
+                item_debug["yahoo_success"] = True
+                item_debug["data_source"] = "Yahoo Finance"
+                item_debug["data_points"] = len(fetch)
+                debug_info.append(item_debug)
+                data.append(fetch)
+                st.success(f"Successfully fetched data for {item} from Yahoo Finance")
+                
+                # Update progress bar
+                percent_complete += 1.0/len_pairs
+                if percent_complete > 1.0:
+                    percent_complete = 1.0            
+                my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
+                continue  # Skip to next item if Yahoo Finance data is valid
+        except Exception as e:
+            st.warning(f"Error fetching data from Yahoo Finance for {item}: {str(e)}")
+            item_debug["yahoo_error"] = str(e)
+        
+        # If Yahoo Finance failed, try CoinGecko
+        st.info(f"Yahoo Finance data unavailable for {item}, trying CoinGecko...")
+        
+        # Extract symbol from the pair (remove -USD suffix)
+        symbol = item.split('-')[0]
+        
+        # Clean the symbol by removing any numbers
+        # This ensures that symbols like "USDC2" are treated as "USDC" for CoinGecko lookup
+        clean_symbol = ''.join([char for char in symbol if not char.isdigit()])
+        
+        # Get CoinGecko ID for the symbol
+        coin_id = crypto_mapping.get(clean_symbol)
+        
+        if coin_id:
+            st.info(f"Using cleaned symbol '{clean_symbol}' for CoinGecko lookup (original: '{symbol}')")
+            item_debug["coingecko_symbol"] = clean_symbol
+            item_debug["coingecko_id"] = coin_id
+        elif not coin_id:
+            # Try the original symbol as fallback
+            coin_id = crypto_mapping.get(symbol)
+            if coin_id:
+                st.info(f"Using original symbol '{symbol}' for CoinGecko lookup")
+                item_debug["coingecko_symbol"] = symbol
+                item_debug["coingecko_id"] = coin_id
+        
+        if coin_id:
+            try:
+                # Always use 365 days for CoinGecko API to ensure we don't exceed limits
+                # This is to prevent potential API rate limiting issues and to ensure consistent behavior
+                # The 'max' period can sometimes cause timeouts or errors with the CoinGecko API
+                days = '365'
+                
+                # Get market data from CoinGecko
+                market_data = cg.get_coin_market_chart_by_id(id=coin_id, vs_currency='usd', days=days)
+                
+                # Extract price data
+                prices = market_data['prices']
+                
+                # Create DataFrame
+                price_df = pd.DataFrame(prices, columns=['timestamp', 'price'])
+                price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], unit='ms')
+                price_df.set_index('timestamp', inplace=True)
+                
+                # Rename columns to match Yahoo Finance format
+                price_df.rename(columns={'price': 'Close'}, inplace=True)
+                
+                # Add other required columns (approximations)
+                price_df['Open'] = price_df['Close'].shift(1)
+                price_df['High'] = price_df['Close'] * 1.005  # Approximate
+                price_df['Low'] = price_df['Close'] * 0.995   # Approximate
+                price_df['Adj Close'] = price_df['Close']
+                price_df['Volume'] = 0  # No volume data from this endpoint
+                
+                # Fill NaN values in the first row
+                if pd.isna(price_df['Open'].iloc[0]):
+                    price_df['Open'].iloc[0] = price_df['Close'].iloc[0]
+                
+                # Check if CoinGecko returned valid data
+                if len(price_df) > 1 and not price_df.empty and not price_df['Close'].isnull().all():
+                    fetch = price_df
+                    item_debug["coingecko_success"] = True
+                    item_debug["data_source"] = "CoinGecko"
+                    item_debug["data_points"] = len(fetch)
+                    debug_info.append(item_debug)
+                    st.success(f"Successfully fetched data for {item} from CoinGecko using symbol {item_debug.get('coingecko_symbol', symbol)}")
+                else:
+                    st.error(f"CoinGecko returned empty or invalid data for {item}")
+                    item_debug["coingecko_error"] = "Empty or invalid data"
+                    # Create a dummy dataframe with the current price
+                    fetch = create_dummy_dataframe_with_price(item, coin_id, cg)
+            except Exception as e:
+                st.error(f"Error fetching data from CoinGecko for {item}: {str(e)}")
+                item_debug["coingecko_error"] = str(e)
+                # Create a dummy dataframe with the current price
+                fetch = create_dummy_dataframe_with_price(item, coin_id, cg)
+        else:
+            st.warning(f"No CoinGecko mapping found for {symbol}")
+            item_debug["coingecko_error"] = "No mapping found"
+            # Create a dummy dataframe with default values
+            fetch = create_dummy_dataframe()
+        
+        # Add the data to the list
+        data.append(fetch)
+        debug_info.append(item_debug)
+        
+        # Update progress bar
+        percent_complete += 1.0/len_pairs
+        if percent_complete > 1.0:
+            percent_complete = 1.0            
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
-        #latest_iteration.text(f'{round(percent_complete*100,1)}%')
-    my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
+    
+    # Display debug information
+    st.expander("Data Retrieval Debug Info").write(debug_info)
+    
+    my_bar.progress(1.0, text="Finished...(fetch the data)...100%")
     return data
+
+def create_dummy_dataframe():
+    """Create a dummy dataframe with default values for when both data sources fail"""
+    # Create a date range for the last 30 days
+    end_date = pd.Timestamp.now()
+    start_date = end_date - pd.Timedelta(days=30)
+    date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+    
+    # Create a dataframe with default values
+    dummy_df = pd.DataFrame(index=date_range)
+    dummy_df['Open'] = 0
+    dummy_df['High'] = 0
+    dummy_df['Low'] = 0
+    dummy_df['Close'] = 0
+    dummy_df['Adj Close'] = 0
+    dummy_df['Volume'] = 0
+    
+    return dummy_df
+
+def create_dummy_dataframe_with_price(item, coin_id, cg):
+    """Create a dummy dataframe with the current price when historical data retrieval fails"""
+    try:
+        # Try to get the current price from CoinGecko
+        price_data = cg.get_price(ids=coin_id, vs_currencies='usd')
+        current_price = price_data.get(coin_id, {}).get('usd', 0)
+    except Exception:
+        current_price = 0
+    
+    # Create a date range for the last 30 days
+    end_date = pd.Timestamp.now()
+    start_date = end_date - pd.Timedelta(days=30)
+    date_range = pd.date_range(start=start_date, end=end_date, freq='D')
+    
+    # Create a dataframe with the current price
+    dummy_df = pd.DataFrame(index=date_range)
+    dummy_df['Open'] = current_price
+    dummy_df['High'] = current_price * 1.005
+    dummy_df['Low'] = current_price * 0.995
+    dummy_df['Close'] = current_price
+    dummy_df['Adj Close'] = current_price
+    dummy_df['Volume'] = 0
+    
+    st.info(f"Using current price ({current_price}) for {item} as fallback")
+    
+    return dummy_df
 
 def extend_dataframe_with_same_dates(df):
     last_day = df.index[-1]  # Last date
@@ -148,31 +371,316 @@ def extend_dataframe_with_same_dates(df):
     return extended_df.sort_index()
 
 @st.cache_data(show_spinner=False, ttl = 3600)
-def get_data2(pairs,period='max'):
+def get_data(pairs,start,lb):
     data=[]
     progress_text = "Running...(fetch the data)"
     my_bar = st.progress(0.0, text=progress_text)
     len_pairs=len(pairs)
     percent_complete = 0.0
-    #latest_iteration = st.empty()
     my_bar.progress(percent_complete, text=progress_text)
     for item in pairs:
-        if item == 'RENDER-USD': 
-            fetch = yf.download(item, period='5d')
-            if len(fetch)==1:
-                fetch = extend_dataframe_with_same_dates(fetch)
-        else:
-            fetch = yf.download(item, period=period)
-        #st.dataframe(fetch)
-        data.append(fetch)
-        percent_complete+=1.0/len_pairs
-        if percent_complete > 1.0:
-            percent_complete=1.0            
+        data.append(getdata(item, lookback=lb).set_index('Time'))#binance
+        percent_complete+=1.0/len_pairs 
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
-        #latest_iteration.text(f'{round(percent_complete*100,1)}%')
     my_bar.progress(1.0, text="Finnished...(fetch the data)...100%")
     return data
 
+def plot_investment(actual_value, invest_value, plot_width, plot_height):
+    gain_loss = actual_value - invest_value
+
+    colors = ['orange','blue']
+    bar_names = ['Actual $', 'Invested $']
+    values = [actual_value, invest_value]
+    bar_colors = ['green' if gain_loss >= 0 else 'red']
+
+    trace = []
+    trace.append(go.Bar(
+        y=['Gain/Loss $'],
+        x=[gain_loss],
+        orientation='h',
+        name='Gain/Loss $',
+        marker=dict(color=bar_colors),
+        hoverinfo='x',
+    ))
+    
+    for i in range(len(bar_names)):
+        trace.append(go.Bar(
+            y=[bar_names[i]],
+            x=[values[i]],
+            orientation='h',
+            name=bar_names[i],
+            marker=dict(color=colors[i]),
+            hoverinfo='x',
+        ))
+
+    annotations = []
+    for i in range(len(bar_names)):
+        annotations.append(dict(x=values[i], y=bar_names[i], text=str(values[i]),
+                                xanchor='left', 
+                                font=dict(color='black'),
+                                showarrow=False))
+
+    annotations.append(dict(x=gain_loss, y='Gain/Loss $', text=str(gain_loss),
+                            xanchor='left', 
+                            font=dict(color='black'),
+                            showarrow=False))
+    layout = go.Layout(
+        title='Status quo',
+        barmode='stack',
+        width=plot_width,
+        height=plot_height,
+        annotations=annotations,
+    )
+
+    fig = go.Figure(data=trace, layout=layout)
+    st.plotly_chart(fig ,use_container_width=True)
+
+def plot_port_assetcat(df, sortcol, highest=10, category=None):
+    if category is not None:
+        try:
+            df = df[df['Kategorie'] == category]
+        except:
+            print(f'{category} is not a viable category!')
+    
+    # Ensure all values in the sortcol are numeric
+    df[sortcol] = pd.to_numeric(df[sortcol], errors='coerce').fillna(0)
+    
+    # Create a copy of the dataframe to avoid modifying the original
+    df_copy = df.copy()
+    
+    # Sort the dataframe
+    if isinstance(highest, int):
+        try:
+            df_sorted = df_copy.sort_values(sortcol, ascending=True).tail(highest)
+        except Exception as e:
+            st.error(f"Error sorting dataframe: {str(e)}")
+            # Fallback: just take the last n rows without sorting
+            df_sorted = df_copy.tail(highest)
+    else: #all
+        try:
+            df_sorted = df_copy.sort_values(sortcol, ascending=True)
+        except Exception as e:
+            st.error(f"Error sorting dataframe: {str(e)}")
+            # Fallback: just use the dataframe as is
+            df_sorted = df_copy
+    
+    # Ensure all numeric columns are properly converted to numeric
+    for col in ['Gain/Loss $', 'Invest $', 'Wert $']:
+        if col in df_sorted.columns:
+            df_sorted[col] = pd.to_numeric(df_sorted[col], errors='coerce').fillna(0)
+    
+    fig = go.Figure()
+
+    # Add trace for Gain/Loss
+    fig.add_trace(go.Bar(
+        y=df_sorted.index,
+        x=df_sorted['Gain/Loss $'],
+        orientation='h',
+        name='Gain/Loss $',
+        text=round(df_sorted['Gain/Loss $']),
+        textposition='inside',
+        marker=dict(color='orange')
+    ))
+
+    # Add trace for Total Investment
+    fig.add_trace(go.Bar(
+        y=df_sorted.index,
+        x=df_sorted['Invest $'],
+        orientation='h',
+        name='Invest $',
+        text=round(df_sorted['Invest $']),
+        textposition='inside',
+        marker=dict(color='blue')
+    ))
+    
+    # Add trace for Current Value
+    fig.add_trace(go.Bar(
+        y=df_sorted.index,
+        x=df_sorted['Wert $'],
+        orientation='h',
+        name='Wert $',
+        text=round(df_sorted['Wert $']),
+        textposition='inside',
+        marker=dict(color='green')
+    ))
+    
+    # Update layout
+    try:
+        min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
+        max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1
+    except Exception as e:
+        st.warning(f"Error calculating min/max values: {str(e)}. Using default values.")
+        min_value = 0
+        max_value = 1000  # Default max value
+    
+    fig.update_layout(
+        barmode='group',
+        title='Portfolio Investment Analysis',
+        xaxis=dict(title='Wert $',range=[min_value, max_value]),
+        yaxis=dict(title='Asset'),
+        legend=dict(
+            x=0.6,
+            y=1.10,
+            orientation='h'
+        )
+    )
+
+    # Show plot
+    if len(df_sorted)<11:
+        fig.update_layout(height=500)
+        st.plotly_chart(fig ,use_container_width=True,height=500)
+    elif len(df_sorted)<21:
+        fig.update_layout(height=30*len(df_sorted))  # Use actual length instead of highest which could be "all"
+        st.plotly_chart(fig ,use_container_width=True,height=30*len(df_sorted))
+    else: #all
+        fig.update_layout(height=1000)
+        st.plotly_chart(fig ,use_container_width=True,height=1000)
+    
+def get_close_price_for_period(dataframe, period):
+    end_date = dataframe.index[-1]  # Get the latest date in the dataframe
+    start_date = end_date - pd.Timedelta(days=period)  # Calculate the start date based on the period
+
+    # Filter the dataframe for the specified period and return the Close prices
+    period_data = dataframe.loc[(dataframe.index >= start_date) & (dataframe.index <= end_date)]
+    
+    return period_data['Close']
+    
+def aggregate_specific_column(dataframes_list, column_name, ticker_list):
+    aggregated_column = pd.DataFrame()  # Create an empty dataframe to aggregate the column data
+    asset_num=0
+    for dataframe in dataframes_list:
+        if column_name in dataframe.columns:
+            # Check if dataframe[column_name] is already a DataFrame or a Series
+            if isinstance(dataframe[column_name], pd.Series):
+                column_data = dataframe[column_name].to_frame()  # Convert Series to DataFrame
+            else:
+                # If it's already a DataFrame, just select the column
+                column_data = dataframe[[column_name]]
+                
+            column_data.columns = [f'{ticker_list[asset_num]}']  # Rename the column uniquely
+            aggregated_column = pd.concat([aggregated_column, column_data], axis=1)  # Concatenate the column to the new dataframe
+        asset_num+=1
+    return aggregated_column
+    
+def multiply_row_elements_and_sum(df, row_index, multiplier_list):
+    return (df.iloc[row_index]*multiplier_list).sum()
+    
+def calc_portfoliovalues(aggregated_prices,lookback,multiplier):
+    pval=[]
+    lasts=lookback
+    leng=len(aggregated_prices)
+    for i in range(lasts):
+        pval.append([aggregated_prices.iloc[leng-lasts+i].name,multiply_row_elements_and_sum(aggregated_prices, leng-lasts+i, multiplier)])
+
+    return pd.Series([x[1] for x in pval], index=[x[0] for x in pval], name = 'Close')
+    
+def plot_sparkline(data):
+    fig = px.line(data, x=data.index, y='Close')#, title='Close Price Sparkline')
+    first_price = data.iloc[0]['Close']
+    last_price = data.iloc[-1]['Close']
+    if last_price > first_price:
+        fig.update_traces(line_color='green')
+    else:
+        fig.update_traces(line_color='red')
+    fig.update_xaxes(visible=False,showticklabels=False)  # Hide x-axis tick labels for a cleaner sparkline
+    fig.update_yaxes(visible=False,showticklabels=False)  # Hide y-axis tick labels for a cleaner sparkline
+    fig.update_layout(height=400)#, margin=dict(l=0, r=0, b=0, t=0))  # Adjust layout for sparkline
+    # Add annotations for the first and last prices - safely convert to int
+    try:
+        first_price_int = int(first_price)
+    except (TypeError, ValueError):
+        first_price_int = int(float(first_price)) if isinstance(first_price, str) and first_price.replace('.', '', 1).isdigit() else 0
+    
+    try:
+        last_price_int = int(last_price)
+    except (TypeError, ValueError):
+        last_price_int = int(float(last_price)) if isinstance(last_price, str) and last_price.replace('.', '', 1).isdigit() else 0
+    
+    fig.add_annotation(x=data.index[0], y=first_price, text=f'{first_price_int} $', showarrow=True, arrowhead=1)
+    fig.add_annotation(x=data.index[-1], y=last_price, text=f'{last_price_int} $', showarrow=True, arrowhead=1)        
+    #fig.update_layout(xaxis_title=f'Portfolio last {len(data)} days', yaxis_title='')
+    st.plotly_chart(fig ,use_container_width=True)  
+
+def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
+    # Calculate total value for each stock in each category
+    agg_data = dataframe.groupby([dataframe.index, category_column]).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
+
+    # Pivot the data to prepare for stacked bar chart
+    pivot_data = agg_data.pivot(index='Name', columns=category_column, values='Total Value').fillna(0)
+
+    # Calculate total value for each category and sort in descending order
+    category_total = pivot_data.sum().sort_values(ascending=False).index
+
+    # Sort pivot data columns based on category total value order
+    pivot_data = pivot_data[category_total]
+
+    # Get stock names as the index
+    stock_names = pivot_data.index
+
+    # Create a stacked bar chart
+    fig = go.Figure()
+
+    for stock in pivot_data.index:
+        fig.add_trace(go.Bar(x=pivot_data.columns, y=pivot_data.loc[stock], name=str(stock),
+                             text=pivot_data.loc[stock].apply(lambda val: f'{stock} '+sizeof_number(val, currency='$')),
+                             hoverinfo='text', showlegend=False,marker=dict(color='blue'),textposition='inside'))
+
+    # Update layout and formatting
+    fig.update_layout(title='Total Value by Category - Stacked',
+                      xaxis_title='Category', yaxis_title='Total Value $',
+                      barmode='stack', width=800, height=400)
+    st.plotly_chart(fig ,use_container_width=True)
+    
+def create_custom_treemap(df, category_column, value_column, gainloss_column):
+    df_ = df.reset_index()
+    fig = px.treemap(df_, path=[px.Constant("Portfolio"), category_column, 'Name'], values=value_column,
+                     color=gainloss_column, hover_data=['Name'],
+                     color_continuous_scale='RdYlGn',
+                     color_continuous_midpoint=0)
+    fig.update_layout(margin=dict(t=50, l=25, r=25, b=25))
+    st.plotly_chart(fig ,use_container_width=True)
+    
+def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date):
+    # Filter data based on input date range
+    prices_subset = prices_df.loc[start_date:end_date]
+    
+    # Multiply prices by number of stocks in the portfolio
+    asset_value = prices_subset.multiply(portfolio_df['Anzahl'], axis=1)
+    #print(asset_value)
+    
+    # Merge with the portfolio dataframe to get the category
+    asset_value_with_category = asset_value.T.join(portfolio_df['Kategorie'])
+    
+    # Group by category and sum the values
+    aggregated_values = asset_value_with_category.groupby('Kategorie').sum()
+    
+    # Normalize each category's current value by the first value in the category
+    normalized_values = aggregated_values.T / aggregated_values.iloc[:,0]
+    
+    #color mapping
+    cm = {unit: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, unit in enumerate(normalized_values.columns.values)}
+    
+    # Plotting
+    fig = px.line(normalized_values, x=normalized_values.index, y=normalized_values.columns,
+                  title='Time Evolution of Asset Categories', color_discrete_map=cm)
+    
+    fig.update_layout(xaxis_title='Date', yaxis_title='Asset Value Gain/Loss Multiplier')
+    st.plotly_chart(fig ,use_container_width=True)
+    
+#app
+if selected == 'Portfolio':
+    st.header("Portfolio Overview :eyeglasses:")
+    
+    # We'll calculate derived columns after lastprices is defined
+    # (moved this code to after the lastprices definition)
+    
+    # Handle potential non-numeric values or NaN values in the 'Invest $' column
+    try:
+        invest = int(assets['Invest $'].sum())
+    except (TypeError, ValueError):
+        # Convert to numeric first, coercing errors to NaN, then sum and convert to int
+        invest = int(pd.to_numeric(assets['Invest $'], errors='coerce').fillna(0).sum())
+    
 fstart=pd.to_datetime('2023-01-01').date()
 fend=pd.to_datetime('today').date()
 
@@ -244,288 +752,28 @@ if len(lastprices) == len(assets):
 else:
     st.error(f"Price data length mismatch. Expected {len(assets)} prices but got {len(lastprices)}.")
 
-assets['Wert $']=assets['Anzahl']*assets['Last $']
-assets['Wert Lastweek $']=assets['Anzahl']*assets['LastWeek $']
-assets['Wert Lastmonth $']=assets['Anzahl']*assets['LastMonth $']
-assets['Gain/Loss $'] = assets['Wert $'] - assets['Invest $']
-
-def plot_investment(actual_value, invest_value, plot_width, plot_height):
-    gain_loss = actual_value - invest_value
-
-    colors = ['orange','blue']
-    bar_names = ['Actual $', 'Invested $']
-    values = [actual_value, invest_value]
-    bar_colors = ['green' if gain_loss >= 0 else 'red']
-
-    trace = []
-    trace.append(go.Bar(
-        y=['Gain/Loss $'],
-        x=[gain_loss],
-        orientation='h',
-        name='Gain/Loss $',
-        marker=dict(color=bar_colors),
-        hoverinfo='x',
-    ))
-    
-    for i in range(len(bar_names)):
-        trace.append(go.Bar(
-            y=[bar_names[i]],
-            x=[values[i]],
-            orientation='h',
-            name=bar_names[i],
-            marker=dict(color=colors[i]),
-            hoverinfo='x',
-        ))
-
-    annotations = []
-    for i in range(len(bar_names)):
-        annotations.append(dict(x=values[i], y=bar_names[i], text=str(values[i]),
-                                xanchor='left', 
-                                font=dict(color='black'),
-                                showarrow=False))
-
-    annotations.append(dict(x=gain_loss, y='Gain/Loss $', text=str(gain_loss),
-                            xanchor='left', 
-                            font=dict(color='black'),
-                            showarrow=False))
-    layout = go.Layout(
-        title='Status quo',
-        barmode='stack',
-        width=plot_width,
-        height=plot_height,
-        annotations=annotations,
-    )
-
-    fig = go.Figure(data=trace, layout=layout)
-    st.plotly_chart(fig ,use_container_width=True)
-
-def plot_port_assetcat(df, sortcol, highest=10, category=None):
-    if category is not None:
-        try:
-            df = df[df['Kategorie'] == category]
-        except:
-            print(f'{category} is not a viable category!')
-    
-    if isinstance(highest, int):
-        df_sorted = df.sort_values(sortcol, ascending=True)[-highest:]
-    else: #all
-        df_sorted = df.sort_values(sortcol, ascending=True)
-    fig = go.Figure()
-
-    # Add trace for Gain/Loss
-    fig.add_trace(go.Bar(
-        y=df_sorted.index,
-        x=df_sorted['Gain/Loss $'],
-        orientation='h',
-        name='Gain/Loss $',
-        text=round(df_sorted['Gain/Loss $']),
-        textposition='inside',
-        marker=dict(color='orange')
-    ))
-
-    # Add trace for Total Investment
-    fig.add_trace(go.Bar(
-        y=df_sorted.index,
-        x=df_sorted['Invest $'],
-        orientation='h',
-        name='Invest $',
-        text=round(df_sorted['Invest $']),
-        textposition='inside',
-        marker=dict(color='blue')
-    ))
-    
-    # Add trace for Current Value
-    fig.add_trace(go.Bar(
-        y=df_sorted.index,
-        x=df_sorted['Wert $'],
-        orientation='h',
-        name='Wert $',
-        text=round(df_sorted['Wert $']),
-        textposition='inside',
-        marker=dict(color='green')
-    ))
-    
-    # Update layout
-    #if len(df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']])>1:
-    #    min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
-    #    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1
-    #else:
-    #    min_value = min(0,df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min() * 1.1)
-    #    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max() * 1.1
-    min_value = min(0, df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].min().min() * 1.1)
-    max_value = df_sorted[['Invest $', 'Wert $', 'Gain/Loss $']].max().max() * 1.1    
-    fig.update_layout(
-        barmode='group',
-        title='Portfolio Investment Analysis',
-        xaxis=dict(title='Wert $',range=[min_value, max_value]),
-        yaxis=dict(title='Asset'),
-        legend=dict(
-            x=0.6,
-            y=1.10,
-            orientation='h'
-        )
-    )
-
-    # Show plot
-    if len(df_sorted)<11:
-        fig.update_layout(height=500)
-        st.plotly_chart(fig ,use_container_width=True,height=500)
-    elif len(df_sorted)<21:
-        fig.update_layout(height=30*highest)
-        st.plotly_chart(fig ,use_container_width=True,height=30*highest)
-    else: #all
-        fig.update_layout(height=1000)
-        st.plotly_chart(fig ,use_container_width=True,height=1000)
-    
-def get_close_price_for_period(dataframe, period):
-    end_date = dataframe.index[-1]  # Get the latest date in the dataframe
-    start_date = end_date - pd.Timedelta(days=period)  # Calculate the start date based on the period
-
-    # Filter the dataframe for the specified period and return the Close prices
-    period_data = dataframe.loc[(dataframe.index >= start_date) & (dataframe.index <= end_date)]
-    
-    return period_data['Close']
-    
-def aggregate_specific_column(dataframes_list, column_name, ticker_list):
-    aggregated_column = pd.DataFrame()  # Create an empty dataframe to aggregate the column data
-    asset_num=0
-    for dataframe in dataframes_list:
-        if column_name in dataframe.columns:
-            column_data = dataframe[column_name].to_frame()  # Extract the specific column data
-            column_data.columns = [f'{ticker_list[asset_num]}']  # Rename the column uniquely
-            aggregated_column = pd.concat([aggregated_column, column_data], axis=1)  # Concatenate the column to the new dataframe
-        asset_num+=1
-    return aggregated_column
-    
-def multiply_row_elements_and_sum(df, row_index, multiplier_list):
-    return (df.iloc[row_index]*multiplier_list).sum()
-    
-def calc_portfoliovalues(aggregated_prices,lookback,multiplier):
-    pval=[]
-    lasts=lookback
-    leng=len(aggregated_prices)
-    for i in range(lasts):
-        pval.append([aggregated_prices.iloc[leng-lasts+i].name,multiply_row_elements_and_sum(aggregated_prices, leng-lasts+i, multiplier)])
-
-    return pd.Series([x[1] for x in pval], index=[x[0] for x in pval], name = 'Close')
-    
-def plot_sparkline(data):
-    fig = px.line(data, x=data.index, y='Close')#, title='Close Price Sparkline')
-    first_price = data.iloc[0]['Close']
-    last_price = data.iloc[-1]['Close']
-    if last_price > first_price:
-        fig.update_traces(line_color='green')
-    else:
-        fig.update_traces(line_color='red')
-    fig.update_xaxes(visible=False,showticklabels=False)  # Hide x-axis tick labels for a cleaner sparkline
-    fig.update_yaxes(visible=False,showticklabels=False)  # Hide y-axis tick labels for a cleaner sparkline
-    fig.update_layout(height=400)#, margin=dict(l=0, r=0, b=0, t=0))  # Adjust layout for sparkline
-    # Add annotations for the first and last prices
-    fig.add_annotation(x=data.index[0], y=first_price, text=f'{int(first_price)} $', showarrow=True, arrowhead=1)
-    fig.add_annotation(x=data.index[-1], y=last_price, text=f'{int(last_price)} $', showarrow=True, arrowhead=1)        
-    #fig.update_layout(xaxis_title=f'Portfolio last {len(data)} days', yaxis_title='')
-    st.plotly_chart(fig ,use_container_width=True)  
-
-#def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
-#    agg_data = dataframe.groupby(category_column).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
-#    sort_data = agg_data.sort_values('Total Value', ascending=False) 
-#        
-#    fig = px.bar(sort_data, x='Kategorie', y='Total Value', text='Total Value',
-#    title='Total Value by Category', labels={'Kategorie': 'Category', 'Total Value': 'Total Value'})
-#
-#    fig.update_traces(texttemplate='%{text:.2s}', textposition='inside')
-#    fig.update_layout(xaxis_title='Category', yaxis_title='Total  Value $',width=800,height=400)   
-#    # Show plot
-#    st.plotly_chart(fig ,use_container_width=True)
-    
-def sizeof_number(number, currency=None):
-    """
-    format values per thousands : K-thousands, M-millions, B-billions. 
-    
-    parameters:
-    -----------
-    number is the number you want to format
-    currency is the prefix that is displayed if provided (€, $, £...)
-    
-    """
-    currency=''if currency is None else currency+''
-    for unit in ['','K','M']:
-        if abs(number) < 1000.0:
-            return f"{currency}{number:6.1f}{unit}"
-        number /= 1000.0
-    return f"{currency}{number:6.1f}B"
-
-def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
-    # Calculate total value for each stock in each category
-    agg_data = dataframe.groupby([dataframe.index, category_column]).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
-
-    # Pivot the data to prepare for stacked bar chart
-    pivot_data = agg_data.pivot(index='Name', columns=category_column, values='Total Value').fillna(0)
-
-    # Calculate total value for each category and sort in descending order
-    category_total = pivot_data.sum().sort_values(ascending=False).index
-
-    # Sort pivot data columns based on category total value order
-    pivot_data = pivot_data[category_total]
-
-    # Get stock names as the index
-    stock_names = pivot_data.index
-
-    # Create a stacked bar chart
-    fig = go.Figure()
-
-    for stock in pivot_data.index:
-        fig.add_trace(go.Bar(x=pivot_data.columns, y=pivot_data.loc[stock], name=str(stock),
-                             text=pivot_data.loc[stock].apply(lambda val: f'{stock} '+sizeof_number(val, currency='$')),
-                             hoverinfo='text', showlegend=False,marker=dict(color='blue'),textposition='inside'))
-
-    # Update layout and formatting
-    fig.update_layout(title='Total Value by Category - Stacked',
-                      xaxis_title='Category', yaxis_title='Total Value $',
-                      barmode='stack', width=800, height=400)
-    st.plotly_chart(fig ,use_container_width=True)
-    
-def create_custom_treemap(df, category_column, value_column, gainloss_column):
-    df_ = df.reset_index()
-    fig = px.treemap(df_, path=[px.Constant("Portfolio"), category_column, 'Name'], values=value_column,
-                     color=gainloss_column, hover_data=['Name'],
-                     color_continuous_scale='RdYlGn',
-                     color_continuous_midpoint=0)
-    fig.update_layout(margin=dict(t=50, l=25, r=25, b=25))
-    st.plotly_chart(fig ,use_container_width=True)
-    
-def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date):
-    # Filter data based on input date range
-    prices_subset = prices_df.loc[start_date:end_date]
-    
-    # Multiply prices by number of stocks in the portfolio
-    asset_value = prices_subset.multiply(portfolio_df['Anzahl'], axis=1)
-    #print(asset_value)
-    
-    # Merge with the portfolio dataframe to get the category
-    asset_value_with_category = asset_value.T.join(portfolio_df['Kategorie'])
-    
-    # Group by category and sum the values
-    aggregated_values = asset_value_with_category.groupby('Kategorie').sum()
-    
-    # Normalize each category's current value by the first value in the category
-    normalized_values = aggregated_values.T / aggregated_values.iloc[:,0]
-    
-    #color mapping
-    cm = {unit: px.colors.qualitative.Plotly[i % len(px.colors.qualitative.Plotly)] for i, unit in enumerate(normalized_values.columns.values)}
-    
-    # Plotting
-    fig = px.line(normalized_values, x=normalized_values.index, y=normalized_values.columns,
-                  title='Time Evolution of Asset Categories', color_discrete_map=cm)
-    
-    fig.update_layout(xaxis_title='Date', yaxis_title='Asset Value Gain/Loss Multiplier')
-    st.plotly_chart(fig ,use_container_width=True)
-    
-#app
 if selected == 'Portfolio':
-    st.header("Portfolio Overview :eyeglasses:")
-    wert=int(assets['Wert $'].sum())
-    invest=int(assets['Invest $'].sum())
+    # Calculate derived columns
+    assets['Wert $'] = assets['Anzahl'] * assets['Last $']
+    assets['Wert Lastweek $'] = assets['Anzahl'] * assets['LastWeek $']
+    assets['Wert Lastmonth $'] = assets['Anzahl'] * assets['LastMonth $']
+    assets['Gain/Loss $'] = assets['Wert $'] - assets['Invest $']
+
+    # Now use the calculated columns
+    # Handle potential non-numeric values or NaN values in the 'Wert $' column
+    try:
+        wert = int(assets['Wert $'].sum())
+    except (TypeError, ValueError):
+        # Convert to numeric first, coercing errors to NaN, then sum and convert to int
+        wert = int(pd.to_numeric(assets['Wert $'], errors='coerce').fillna(0).sum())
+
+    # Handle potential non-numeric values or NaN values in the 'Invest $' column
+    try:
+        invest = int(assets['Invest $'].sum())
+    except (TypeError, ValueError):
+        # Convert to numeric first, coercing errors to NaN, then sum and convert to int
+        invest = int(pd.to_numeric(assets['Invest $'], errors='coerce').fillna(0).sum())
+
     plot_investment(wert, invest, 800, 250)
     
     with st.expander("Protfolio Investment Analysis"):
@@ -533,12 +781,14 @@ if selected == 'Portfolio':
         # Store the initial value of widgets in session state
         with col1:
             assetsnum = st.radio(
-                "Set number of assets 👇",
+                "Set number of assets ",
                 [10, 20, "all"],
                 index=0,
                 horizontal=True 
             )
-            plot_port_assetcat(assets,'Wert $',assetsnum,category=None)
+            # Convert assetsnum to the appropriate type before passing to the function
+            assets_to_show = assetsnum if isinstance(assetsnum, int) or assetsnum == "all" else int(assetsnum)
+            plot_port_assetcat(assets, 'Wert $', assets_to_show, category=None)
 
         toggle = col2.toggle('Monthly')
         if toggle:
@@ -578,10 +828,10 @@ if selected == 'Asset Cats Analysis':
         # Store the initial value of widgets in session state
         with col1:
             assetcat = st.selectbox(
-                "Select assets category 👇",
+                "Select assets category ",
                 assets['Kategorie'].unique()
             )
-            plot_port_assetcat(assets,'Wert $','all',assetcat)
+            plot_port_assetcat(assets, 'Wert $', "all", assetcat)
 
         toggle = col2.toggle('Monthly')
         ac = assets[assets['Kategorie'] == assetcat]
@@ -695,3 +945,20 @@ if selected == 'OHCL Single Asset':
         
     datafiltered=[j for i, j in zip(data, pairs2) if i==dropdown][0] 
     generate_ohlc_chartplotly(dropdown,datafiltered,start=start,end=end)
+
+def sizeof_number(number, currency=None):
+    """
+    format values per thousands : K-thousands, M-millions, B-billions. 
+    
+    parameters:
+    -----------
+    number is the number you want to format
+    currency is the prefix that is displayed if provided (€, $, £...)
+    
+    """
+    currency=''if currency is None else currency+''
+    for unit in ['','K','M']:
+        if abs(number) < 1000.0:
+            return f"{currency}{number:6.1f}{unit}"
+        number /= 1000.0
+    return f"{currency}{number:6.1f}B"
