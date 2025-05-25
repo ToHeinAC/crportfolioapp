@@ -194,15 +194,37 @@ def get_data2(pairs, period='max'):
         
         # Try Yahoo Finance first
         try:
-            if item == 'RENDER-USD': 
-                fetch = yf.download(item, period='5d')
-                if len(fetch) <= 1:
-                    fetch = extend_dataframe_with_same_dates(fetch)
-            else:
-                fetch = yf.download(item, period=period)
+            # Add a small delay between requests to avoid rate limiting
+            import time
+            import random
+            time.sleep(random.uniform(1, 3))  #  delay between requests
+            
+            # Implement retry logic with exponential backoff for rate limiting
+            max_retries = 3
+            retry_delay = 2  # Start with 2 seconds
+            
+            for retry in range(max_retries):
+                try:
+                    if item == 'RENDER-USD': 
+                        fetch = yf.download(item, period='5d', progress=False)  # Disable progress to reduce output noise
+                        if len(fetch) <= 1:
+                            fetch = extend_dataframe_with_same_dates(fetch)
+                    else:
+                        fetch = yf.download(item, period=period, progress=False)  # Disable progress to reduce output noise
+                    break  # If successful, break out of retry loop
+                except Exception as retry_e:
+                    if 'Rate limit' in str(retry_e) and retry < max_retries - 1:
+                        # Add jitter to avoid synchronized retries
+                        jitter = random.uniform(0, 1)
+                        wait_time = retry_delay * (2 ** retry) + jitter
+                        st.warning(f"Rate limit hit for {item}, retrying in {wait_time:.2f} seconds (attempt {retry+1}/{max_retries})")
+                        time.sleep(wait_time)
+                    else:
+                        # Re-raise if it's not a rate limit error or we've exhausted retries
+                        raise
             
             # Check if Yahoo Finance returned valid data
-            if len(fetch) > 1 and not fetch.empty and not fetch['Close'].isnull().all():
+            if len(fetch) > 1 and not fetch.empty and not fetch['Close'].isnull().all().item():
                 item_debug["yahoo_success"] = True
                 item_debug["data_source"] = "Yahoo Finance"
                 item_debug["data_points"] = len(fetch)
@@ -275,10 +297,11 @@ def get_data2(pairs, period='max'):
                 
                 # Fill NaN values in the first row
                 if pd.isna(price_df['Open'].iloc[0]):
-                    price_df['Open'].iloc[0] = price_df['Close'].iloc[0]
+                    # Use loc instead of iloc on a slice to avoid SettingWithCopyWarning
+                    price_df.loc[price_df.index[0], 'Open'] = price_df['Close'].iloc[0]
                 
                 # Check if CoinGecko returned valid data
-                if len(price_df) > 1 and not price_df.empty and not price_df['Close'].isnull().all():
+                if len(price_df) > 1 and not price_df.empty and not price_df['Close'].isnull().all().item():
                     fetch = price_df
                     item_debug["coingecko_success"] = True
                     item_debug["data_source"] = "CoinGecko"
@@ -436,11 +459,30 @@ def plot_investment(actual_value, invest_value, plot_width, plot_height):
     st.plotly_chart(fig ,use_container_width=True)
 
 def plot_port_assetcat(df, sortcol, highest=10, category=None):
+    # Make a copy of the dataframe to avoid modifying the original
+    df = df.copy()
+    
     if category is not None:
         try:
             df = df[df['Kategorie'] == category]
         except:
             print(f'{category} is not a viable category!')
+    
+    # Check if required columns exist, if not create them
+    # First check and create 'Wert $' if needed
+    if 'Wert $' not in df.columns and 'Anzahl' in df.columns and 'Last $' in df.columns:
+        df['Wert $'] = df['Anzahl'] * df['Last $']
+        st.info("Column 'Wert $' was calculated as 'Anzahl' * 'Last $'")
+    
+    # Then check and create 'Gain/Loss $' if needed
+    if 'Gain/Loss $' not in df.columns and 'Wert $' in df.columns and 'Invest $' in df.columns:
+        df['Gain/Loss $'] = df['Wert $'] - df['Invest $']
+        st.info("Column 'Gain/Loss $' was calculated as 'Wert $' - 'Invest $'")
+    
+    # Now check if the sortcol exists, if not create it
+    if sortcol not in df.columns:
+        st.warning(f"Column '{sortcol}' not found and couldn't be calculated. Using placeholder values.")
+        df[sortcol] = 1  # Use placeholder values
     
     # Ensure all values in the sortcol are numeric
     df[sortcol] = pd.to_numeric(df[sortcol], errors='coerce').fillna(0)
@@ -601,6 +643,50 @@ def plot_sparkline(data):
     #fig.update_layout(xaxis_title=f'Portfolio last {len(data)} days', yaxis_title='')
     st.plotly_chart(fig ,use_container_width=True)  
 
+# Function to format values with K (thousands), M (millions), B (billions) suffixes
+def sizeof_number(number, currency=None):
+    """
+    Format values per thousands: K-thousands, M-millions, B-billions.
+    
+    Parameters:
+    -----------
+    number: The number you want to format
+    currency: The prefix that is displayed if provided (€, $, £...)
+    
+    Returns:
+    --------
+    Formatted string with appropriate suffix (K, M, B)
+    """
+    try:
+        # Convert to float if it's not already a number
+        number = float(number)
+    except (ValueError, TypeError):
+        return '0' if currency is None else f'{currency}0'
+        
+    # Define suffixes and thresholds
+    suffixes = ['', 'K', 'M', 'B', 'T']
+    suffix_idx = 0
+    
+    # Determine appropriate suffix
+    while number >= 1000 and suffix_idx < len(suffixes) - 1:
+        suffix_idx += 1
+        number /= 1000.0
+    
+    # Format with 1 decimal place if not a whole number, otherwise as an integer
+    if number == int(number):
+        formatted = f'{int(number)}'
+    else:
+        formatted = f'{number:.1f}'
+    
+    # Add suffix
+    formatted += suffixes[suffix_idx]
+    
+    # Add currency prefix if provided
+    if currency is not None:
+        formatted = f'{currency}{formatted}'
+        
+    return formatted
+
 def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity_column, price_column):
     # Calculate total value for each stock in each category
     agg_data = dataframe.groupby([dataframe.index, category_column]).apply(lambda x: (x[quantity_column] * x[price_column]).sum()).reset_index(name='Total Value')
@@ -632,7 +718,27 @@ def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity
     st.plotly_chart(fig ,use_container_width=True)
     
 def create_custom_treemap(df, category_column, value_column, gainloss_column):
-    df_ = df.reset_index()
+    # Make a copy of the dataframe to avoid modifying the original
+    df_ = df.copy().reset_index()
+    
+    # Check if the required columns exist, if not create them
+    if value_column not in df_.columns:
+        # If 'Wert $' doesn't exist but 'Anzahl' and 'Last $' do, calculate it
+        if 'Anzahl' in df_.columns and 'Last $' in df_.columns:
+            df_[value_column] = df_['Anzahl'] * df_['Last $']
+        else:
+            st.warning(f"Column '{value_column}' not found and couldn't be calculated. Using placeholder values.")
+            df_[value_column] = 1  # Use placeholder values
+    
+    if gainloss_column not in df_.columns:
+        # If 'Gain/Loss $' doesn't exist but 'Wert $' and 'Invest $' do, calculate it
+        if value_column in df_.columns and 'Invest $' in df_.columns:
+            df_[gainloss_column] = df_[value_column] - df_['Invest $']
+        else:
+            st.warning(f"Column '{gainloss_column}' not found and couldn't be calculated. Using placeholder values.")
+            df_[gainloss_column] = 0  # Use placeholder values
+    
+    # Create the treemap visualization
     fig = px.treemap(df_, path=[px.Constant("Portfolio"), category_column, 'Name'], values=value_column,
                      color=gainloss_column, hover_data=['Name'],
                      color_continuous_scale='RdYlGn',
@@ -708,16 +814,27 @@ failed_symbols = []
 for i, symbol in zip(data, pairs2):
     try:
         if not i.empty and 'Close' in i.columns:
-            lastprices.append(i['Close'].iloc[-1])
-            lastweek.append(i['Close'].iloc[-7])
-            lastmonth.append(i['Close'].iloc[-30] if len(i) >= 30 else i['Close'].iloc[0])
+            # Extract scalar values from Series objects using the recommended approach
+            lastprices.append(float(i['Close'].iloc[-1].iloc[0] if isinstance(i['Close'].iloc[-1], pd.Series) else i['Close'].iloc[-1]))
+            lastweek.append(float(i['Close'].iloc[-7].iloc[0] if isinstance(i['Close'].iloc[-7], pd.Series) else i['Close'].iloc[-7]))
+            
+            # Handle the conditional expression for lastmonth properly
+            last_month_value = i['Close'].iloc[-30] if len(i) >= 30 else i['Close'].iloc[0]
+            lastmonth.append(float(last_month_value.iloc[0] if isinstance(last_month_value, pd.Series) else last_month_value))
         else:
             # If data is empty or missing Close column, try to fetch it again
             retry_data = yf.download(symbol, period='7d')
             if not retry_data.empty and 'Close' in retry_data.columns:
-                lastprices.append(retry_data['Close'].iloc[-1])
-                lastweek.append(retry_data['Close'].iloc[-7] if len(retry_data) >= 7 else retry_data['Close'].iloc[0])
-                lastmonth.append(retry_data['Close'].iloc[-30] if len(retry_data) >= 30 else retry_data['Close'].iloc[0])
+                # Extract scalar values from Series objects using the recommended approach
+                lastprices.append(float(retry_data['Close'].iloc[-1].iloc[0] if isinstance(retry_data['Close'].iloc[-1], pd.Series) else retry_data['Close'].iloc[-1]))
+                
+                # Handle the conditional expression for lastweek properly
+                last_week_retry = retry_data['Close'].iloc[-7] if len(retry_data) >= 7 else retry_data['Close'].iloc[0]
+                lastweek.append(float(last_week_retry.iloc[0] if isinstance(last_week_retry, pd.Series) else last_week_retry))
+                
+                # Handle the conditional expression for lastmonth properly
+                last_month_retry = retry_data['Close'].iloc[-30] if len(retry_data) >= 30 else retry_data['Close'].iloc[0]
+                lastmonth.append(float(last_month_retry.iloc[0] if isinstance(last_month_retry, pd.Series) else last_month_retry))
             else:
                 # If retry fails, use the last known price from assets DataFrame if available
                 if 'Last $' in assets.columns:
@@ -749,6 +866,13 @@ if len(lastprices) == len(assets):
     assets['Last $'] = lastprices
     assets['LastWeek $'] = lastweek
     assets['LastMonth $'] = lastmonth
+    
+    # Debug information
+    st.expander("Debug Price Information").write({
+        "Last Prices": lastprices,
+        "Number of Prices": len(lastprices),
+        "Price Types": [type(p).__name__ for p in lastprices]
+    })
 else:
     st.error(f"Price data length mismatch. Expected {len(assets)} prices but got {len(lastprices)}.")
 
@@ -758,14 +882,25 @@ if selected == 'Portfolio':
     assets['Wert Lastweek $'] = assets['Anzahl'] * assets['LastWeek $']
     assets['Wert Lastmonth $'] = assets['Anzahl'] * assets['LastMonth $']
     assets['Gain/Loss $'] = assets['Wert $'] - assets['Invest $']
+    
+    # Debug information for calculation
+    st.expander("Debug Calculation Information").write({
+        "Anzahl Sample": assets['Anzahl'].head().tolist(),
+        "Last $ Sample": assets['Last $'].head().tolist(),
+        "Wert $ Sample": assets['Wert $'].head().tolist(),
+        "Wert $ Sum": assets['Wert $'].sum(),
+        "Wert $ Types": [type(w).__name__ for w in assets['Wert $'].head().tolist()]
+    })
 
     # Now use the calculated columns
-    # Handle potential non-numeric values or NaN values in the 'Wert $' column
-    try:
-        wert = int(assets['Wert $'].sum())
-    except (TypeError, ValueError):
-        # Convert to numeric first, coercing errors to NaN, then sum and convert to int
-        wert = int(pd.to_numeric(assets['Wert $'], errors='coerce').fillna(0).sum())
+    # Ensure all values are properly converted to numeric before summing
+    assets['Wert $'] = pd.to_numeric(assets['Wert $'], errors='coerce').fillna(0)
+    assets['Wert Lastweek $'] = pd.to_numeric(assets['Wert Lastweek $'], errors='coerce').fillna(0)
+    assets['Wert Lastmonth $'] = pd.to_numeric(assets['Wert Lastmonth $'], errors='coerce').fillna(0)
+    assets['Gain/Loss $'] = pd.to_numeric(assets['Gain/Loss $'], errors='coerce').fillna(0)
+    
+    # Calculate the total portfolio value
+    wert = int(assets['Wert $'].sum())
 
     # Handle potential non-numeric values or NaN values in the 'Invest $' column
     try:
@@ -877,6 +1012,86 @@ if selected == 'OHCL Single Asset':
         return rsi
     
     def generate_ohlc_chartplotly(symbol, data, start=None, end=None):
+        # Check if data is a string (ticker symbol) and fetch data if needed
+        if isinstance(data, str):
+            st.info(f"Fetching data for {data}...")
+            try:
+                # For crypto tickers ending with USDT, convert to Yahoo Finance format
+                if data.endswith('USDT'):
+                    # Convert SOLUSDT to SOL-USD format for Yahoo Finance
+                    base_currency = data.replace('USDT', '')
+                    yahoo_ticker = f"{base_currency}-USD"
+                    st.info(f"Converting {data} to Yahoo Finance format: {yahoo_ticker}")
+                    # Download data using the correct Yahoo Finance format
+                    crypto_data = yf.download(yahoo_ticker, start=start, end=end)
+                    
+                    # If no data, try CoinGecko API as fallback
+                    if crypto_data.empty:
+                        st.info(f"No data from Yahoo Finance. Trying CoinGecko API...")
+                        try:
+                            # Extract the base currency (e.g., 'SOL' from 'SOLUSDT')
+                            base_currency = data.replace('USDT', '').lower()
+                            
+                            # Use CoinGecko API to get historical data
+                            cg = CoinGeckoAPI()
+                            # Convert dates to UNIX timestamps (milliseconds)
+                            from_timestamp = int(pd.to_datetime(start).timestamp())
+                            to_timestamp = int(pd.to_datetime(end).timestamp())
+                            
+                            # Get market chart data
+                            coin_data = cg.get_coin_market_chart_range_by_id(
+                                id=base_currency, 
+                                vs_currency='usd',
+                                from_timestamp=from_timestamp,
+                                to_timestamp=to_timestamp
+                            )
+                            
+                            # Process the data into a DataFrame
+                            prices = coin_data['prices']  # [[timestamp, price], ...]
+                            volumes = coin_data['total_volumes']  # [[timestamp, volume], ...]
+                            
+                            # Create DataFrame
+                            df_prices = pd.DataFrame(prices, columns=['timestamp', 'price'])
+                            df_volumes = pd.DataFrame(volumes, columns=['timestamp', 'volume'])
+                            
+                            # Convert timestamp to datetime
+                            df_prices['timestamp'] = pd.to_datetime(df_prices['timestamp'], unit='ms')
+                            df_volumes['timestamp'] = pd.to_datetime(df_volumes['timestamp'], unit='ms')
+                            
+                            # Set timestamp as index
+                            df_prices.set_index('timestamp', inplace=True)
+                            df_volumes.set_index('timestamp', inplace=True)
+                            
+                            # Merge price and volume data
+                            crypto_data = pd.DataFrame()
+                            crypto_data['Close'] = df_prices['price']
+                            crypto_data['Open'] = df_prices['price'].shift(1)  # Use previous close as open
+                            crypto_data['High'] = df_prices['price'] * 1.005  # Approximate high as 0.5% above close
+                            crypto_data['Low'] = df_prices['price'] * 0.995   # Approximate low as 0.5% below close
+                            crypto_data['Volume'] = df_volumes['volume']
+                            
+                            # Forward fill missing values
+                            crypto_data.fillna(method='ffill', inplace=True)
+                            
+                            if crypto_data.empty:
+                                st.error(f"Could not fetch data for {symbol} from CoinGecko either.")
+                                return
+                        except Exception as cg_error:
+                            st.error(f"Error fetching from CoinGecko: {str(cg_error)}")
+                            return
+                    
+                    data = crypto_data
+                else:
+                    # For non-crypto assets, use yfinance directly
+                    data = yf.download(data, start=start, end=end)
+                    
+                if data.empty:
+                    st.error(f"No data available for {symbol}")
+                    return
+            except Exception as e:
+                st.error(f"Error fetching data for {symbol}: {str(e)}")
+                return
+                
         # Calculate moving averages
         data['MA_20'] = data['Close'].rolling(window=20).mean()
         data['MA_200'] = data['Close'].rolling(window=200).mean()
@@ -924,7 +1139,6 @@ if selected == 'OHCL Single Asset':
         fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=30, y1=30, row=3, col=1, line=dict(color='green', width=2), name='RSI 30')
         fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=70, y1=70, row=3, col=1, line=dict(color='red', width=2), name='RSI 70')
 
-        
         # Update layout
         fig.update_layout(
             xaxis_rangeslider_visible=False,
@@ -937,28 +1151,69 @@ if selected == 'OHCL Single Asset':
             height=600  # Adjust the height as needed
         )
 
-        # Calculate performance percentage
-        perf_percent = round((stock_data['Close'][-1] / stock_data['Close'][0] - 1.0) * 100, 1)
-        fig.update_layout(title=f'{symbol} OHLC Chart - Performance: {perf_percent}%', xaxis_rangeslider_visible=False)
+        # Calculate performance percentage - safely handle empty data
+        if not stock_data.empty:
+            try:
+                # Use iloc to safely access first and last elements
+                first_close = stock_data['Close'].iloc[0]
+                last_close = stock_data['Close'].iloc[-1]
+                perf_percent = round((last_close / first_close - 1.0) * 100, 1)
+                fig.update_layout(title=f'{symbol} OHLC Chart - Performance: {perf_percent}%', xaxis_rangeslider_visible=False)
+            except (IndexError, ZeroDivisionError) as e:
+                # Handle potential errors
+                st.warning(f"Could not calculate performance: {str(e)}")
+                fig.update_layout(title=f'{symbol} OHLC Chart', xaxis_rangeslider_visible=False)
+        else:
+            fig.update_layout(title=f'{symbol} OHLC Chart - No data available', xaxis_rangeslider_visible=False)
         #fig.update_layout(autosize=True)
         st.plotly_chart(fig, use_container_width=True)
         
-    datafiltered=[j for i, j in zip(data, pairs2) if i==dropdown][0] 
-    generate_ohlc_chartplotly(dropdown,datafiltered,start=start,end=end)
+    # Fix the truth value error by properly comparing DataFrames
+    # Find the index of the selected dropdown value in pairs
+    try:
+        # For crypto tickers ending with USDT, convert to Yahoo Finance format
+        if dropdown.endswith('USDT'):
+            # Extract the base currency (e.g., 'SOL' from 'SOLUSDT')
+            base_currency = dropdown.replace('USDT', '')
+            # Create the proper Yahoo Finance ticker format
+            yahoo_ticker = f"{base_currency}-USD"
+            # Generate the chart with the proper display name and Yahoo ticker format
+            generate_ohlc_chartplotly(f"{base_currency}/USD", yahoo_ticker, start=start, end=end)
+        else:
+            # For regular assets, use the index lookup method
+            index_of_selected = pairs.index(dropdown)
+            # Use the index to get the corresponding data
+            datafiltered = pairs2[index_of_selected]
+            # Generate the chart
+            generate_ohlc_chartplotly(dropdown, datafiltered, start=start, end=end)
+    except ValueError:
+        st.error(f"Could not find data for {dropdown}. Available tickers: {', '.join(pairs[:5])}...")
+    except Exception as e:
+        st.error(f"Error generating chart: {str(e)}")
+        # Add debugging information
+        st.expander("Debug Information").write({
+            "Selected Ticker": dropdown,
+            "Ticker Type": type(dropdown).__name__,
+            "Sample Available Tickers": pairs[:5] if len(pairs) > 5 else pairs
+        })
 
-def sizeof_number(number, currency=None):
-    """
-    format values per thousands : K-thousands, M-millions, B-billions. 
-    
-    parameters:
-    -----------
-    number is the number you want to format
-    currency is the prefix that is displayed if provided (€, $, £...)
-    
-    """
-    currency=''if currency is None else currency+''
-    for unit in ['','K','M']:
-        if abs(number) < 1000.0:
-            return f"{currency}{number:6.1f}{unit}"
-        number /= 1000.0
-    return f"{currency}{number:6.1f}B"
+# The sizeof_number function has been moved above the plot_grouped_bar_chart_with_calculation function
+
+# This is the original sizeof_number function that was in the codebase
+# It has been commented out because we've implemented a more comprehensive version above
+# def sizeof_number(number, currency=None):
+#     """
+#     format values per thousands : K-thousands, M-millions, B-billions. 
+#     
+#     parameters:
+#     -----------
+#     number is the number you want to format
+#     currency is the prefix that is displayed if provided (€, $, £...)
+#     
+#     """
+#     currency=''if currency is None else currency+''
+#     for unit in ['','K','M']:
+#         if abs(number) < 1000.0:
+#             return f"{currency}{number:6.1f}{unit}"
+#         number /= 1000.0
+#     return f"{currency}{number:6.1f}B"
