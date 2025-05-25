@@ -987,11 +987,22 @@ if selected == 'Asset Cats Analysis':
     
     
 if selected == 'OHCL Single Asset':
-    st.header("OHCL Chart Single Asset :eyeglasses:")
+    st.header("OHLC Chart Single Asset :eyeglasses:")
+    
+    # Create columns for the input controls
     col3, col4, col5 = st.columns(3)
+    
+    # Date inputs with proper defaults
     start = col3.date_input('Start', pd.to_datetime('2023-01-01'))
     end = col4.date_input('End', pd.to_datetime('today'))
-    dropdown =col5.selectbox('Pick your asset',pairs)
+    
+    # Asset selection dropdown
+    dropdown = col5.selectbox('Pick your asset', pairs)
+    
+    # Add a loading indicator
+    with st.spinner(f"Loading OHLC data for {dropdown}..."):
+        # The actual loading happens in the generate_ohlc_chartplotly function
+        pass
     
     def calculate_rsi(data, column='Close', window=14):
         # Calculate daily price changes
@@ -1023,7 +1034,33 @@ if selected == 'OHCL Single Asset':
                     yahoo_ticker = f"{base_currency}-USD"
                     st.info(f"Converting {data} to Yahoo Finance format: {yahoo_ticker}")
                     # Download data using the correct Yahoo Finance format
-                    crypto_data = yf.download(yahoo_ticker, start=start, end=end)
+                    crypto_data = yf.download(yahoo_ticker, start=start, end=end, progress=False, interval='1d')
+                    
+                    # Handle MultiIndex columns if present
+                    if isinstance(crypto_data.columns, pd.MultiIndex):
+                        st.info("Converting MultiIndex columns to flat columns")
+                        # Convert MultiIndex to flat index by taking the first level
+                        crypto_data.columns = [col[0] for col in crypto_data.columns]
+                    
+                    # Print the columns to debug
+                    if not crypto_data.empty:
+                        try:
+                            column_list = [str(col) for col in crypto_data.columns.tolist()]
+                            st.write(f"Columns from Yahoo Finance: {column_list}")
+                        except Exception as e:
+                            st.warning(f"Could not display columns: {str(e)}")
+                    else:
+                        st.warning(f"No data returned from Yahoo Finance for {yahoo_ticker}")
+                    
+                    # Ensure all required columns exist
+                    if not crypto_data.empty:
+                        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+                        try:
+                            missing_cols = [col for col in required_cols if col not in crypto_data.columns]
+                            if missing_cols:
+                                st.warning(f"Missing columns in Yahoo Finance data: {', '.join(missing_cols)}")
+                        except Exception as e:
+                            st.warning(f"Could not check missing columns: {str(e)}")
                     
                     # If no data, try CoinGecko API as fallback
                     if crypto_data.empty:
@@ -1108,47 +1145,159 @@ if selected == 'OHCL Single Asset':
         # Calculate RSI(14)
         data['RSI_14'] = calculate_rsi(data, column='Close', window=14)
 
-        mask = (pd.to_datetime(data.index) > pd.to_datetime(start)) & (pd.to_datetime(data.index) <= pd.to_datetime(end))
-        stock_data = data.loc[mask]
+        # Ensure data is properly filtered by date
+        try:
+            # Convert index to datetime if it's not already
+            if not isinstance(data.index, pd.DatetimeIndex):
+                data.index = pd.to_datetime(data.index)
+                
+            # Convert start and end to pandas Timestamp objects
+            start_ts = pd.Timestamp(start)
+            end_ts = pd.Timestamp(end)
+                
+            # Filter data by date range
+            mask = (data.index >= start_ts) & (data.index <= end_ts)
+            stock_data = data.loc[mask].copy()
+            
+            # Debug information
+            st.info(f"Data shape after filtering: {stock_data.shape}")
+            
+            if stock_data.empty:
+                st.warning(f"No data available for {symbol} in the selected date range.")
+                return
+        except Exception as e:
+            st.error(f"Error filtering data: {str(e)}")
+            stock_data = data.copy()  # Use all data if filtering fails
 
         # Create subplots with shared x-axis
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.015, row_heights=[0.6, 0.2, 0.2])
 
-        # Add candlestick trace to the first subplot
-        fig.add_trace(go.Candlestick(x=stock_data.index,
-                                     open=stock_data['Open'],
-                                     high=stock_data['High'],
-                                     low=stock_data['Low'],
-                                     close=stock_data['Close'],
-                                     name='OHLC'), row=1, col=1)
+        # Debug information - show data columns
+        try:
+            column_list = [str(col) for col in stock_data.columns.tolist()]
+            st.info(f"Available columns: {', '.join(column_list)}")
+        except Exception as e:
+            st.warning(f"Could not display columns: {str(e)}")
+        
+        # Handle MultiIndex columns if present
+        if isinstance(stock_data.columns, pd.MultiIndex):
+            st.info("Converting MultiIndex columns to flat columns")
+            # Convert MultiIndex to flat index by taking the first level
+            stock_data.columns = [col[0] if isinstance(col, tuple) else col for col in stock_data.columns]
+        
+        # Ensure all OHLC data is numeric
+        numeric_columns = []
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in required_cols:
+            if col in stock_data.columns:
+                stock_data[col] = pd.to_numeric(stock_data[col], errors='coerce')
+                numeric_columns.append(col)
+        
+        try:
+            if numeric_columns:
+                st.info(f"Converted to numeric: {', '.join(numeric_columns)}")
+            else:
+                st.warning("No numeric columns were found or converted")
+        except Exception as e:
+            st.warning(f"Could not display numeric columns: {str(e)}")
+        
+        # Check if we have all required columns for candlestick
+        required_cols = ['Open', 'High', 'Low', 'Close']
+        missing_cols = [col for col in required_cols if col not in stock_data.columns]
+        
+        # Debug the column names
+        st.info(f"Column types: {[type(col).__name__ for col in stock_data.columns]}")
+        st.info(f"Checking for columns: {required_cols}")
+        st.info(f"Available columns: {list(stock_data.columns)}")
+        
+        if missing_cols:
+            st.error(f"Missing required columns for candlestick chart: {missing_cols}")
+            # If we're missing columns, use a line chart instead
+            fig.add_trace(go.Scatter(
+                x=stock_data.index,
+                y=stock_data['Close'] if 'Close' in stock_data.columns else stock_data.iloc[:, 0],
+                mode='lines',
+                name='Price',
+                line=dict(color='blue', width=2)
+            ), row=1, col=1)
+        else:
+            # Add candlestick trace to the first subplot
+            fig.add_trace(go.Candlestick(
+                x=stock_data.index,
+                open=stock_data['Open'],
+                high=stock_data['High'],
+                low=stock_data['Low'],
+                close=stock_data['Close'],
+                name='OHLC',
+                increasing_line_color='green',
+                decreasing_line_color='red'
+            ), row=1, col=1)
 
-        # Add Bollinger Bands traces to the first subplot
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['upper_band'], mode='lines', name='Upper Band', line=dict(color='green')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['lower_band'], mode='lines', name='Lower Band', line=dict(color='red')), row=1, col=1)
+        # Calculate Bollinger Bands and Moving Averages here since the columns might have been renamed
+        # Calculate moving averages
+        if 'Close' in stock_data.columns:
+            stock_data['MA_20'] = stock_data['Close'].rolling(window=20).mean()
+            stock_data['MA_50'] = stock_data['Close'].rolling(window=50).mean()
+            stock_data['MA_200'] = stock_data['Close'].rolling(window=200).mean()
+            
+            # Calculate Bollinger Bands
+            stock_data['std'] = stock_data['Close'].rolling(window=20).std()
+            stock_data['upper_band'] = stock_data['MA_20'] + (stock_data['std'] * 2)
+            stock_data['lower_band'] = stock_data['MA_20'] - (stock_data['std'] * 2)
+            
+            # Add Bollinger Bands traces to the first subplot
+            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['upper_band'], mode='lines', name='Upper Band', line=dict(color='green', width=1)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['lower_band'], mode='lines', name='Lower Band', line=dict(color='red', width=1)), row=1, col=1)
 
-        # Add moving averages traces to the first subplot
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_200'], mode='lines', name='200-day Moving Average', line=dict(color='blue')), row=1, col=1)
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_50'], mode='lines', name='50-day Moving Average', line=dict(color='orange')), row=1, col=1)
+            # Add moving averages traces to the first subplot
+            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_200'], mode='lines', name='200-day MA', line=dict(color='blue', width=1)), row=1, col=1)
+            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['MA_50'], mode='lines', name='50-day MA', line=dict(color='orange', width=1)), row=1, col=1)
 
-        # Add Volume subplot to the second subplot
-        fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['V_EMA_5'], mode='lines', name='V_EMA_5', line=dict(color='black')), row=2, col=1)
+        # Add Volume subplot to the second subplot if Volume data exists
+        if 'Volume' in stock_data.columns:
+            fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
+            if 'V_EMA_5' in stock_data.columns:
+                fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['V_EMA_5'], mode='lines', name='V_EMA_5', line=dict(color='black', width=1)), row=2, col=1)
+        else:
+            st.warning("No volume data available for this asset")
 
-        # Add RSI subplot to the third subplot
-        fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['RSI_14'], mode='lines', name='RSI(14)', line=dict(color='orange')), row=3, col=1)
-        fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=30, y1=30, row=3, col=1, line=dict(color='green', width=2), name='RSI 30')
-        fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=70, y1=70, row=3, col=1, line=dict(color='red', width=2), name='RSI 70')
+        # Add RSI subplot to the third subplot if RSI data exists
+        if 'RSI_14' in stock_data.columns and not stock_data['RSI_14'].isna().all():
+            fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['RSI_14'], mode='lines', name='RSI(14)', line=dict(color='orange')), row=3, col=1)
+            
+            # Only add reference lines if we have valid index data
+            if not stock_data.empty:
+                fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=30, y1=30, row=3, col=1, line=dict(color='green', width=2), name='RSI 30')
+                fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=70, y1=70, row=3, col=1, line=dict(color='red', width=2), name='RSI 70')
+        else:
+            st.warning("No RSI data available for this asset")
 
         # Update layout
         fig.update_layout(
             xaxis_rangeslider_visible=False,
             title=f'{symbol} OHLC Chart',
-            #xaxis=dict(title='Date'),
             yaxis=dict(title='Price'),
             yaxis2=dict(title='Volume', anchor='x', side='bottom'),
             yaxis3=dict(title='RSI(14)', anchor='x', side='left'),
             legend=dict(x=0, y=1, traceorder="normal", font=dict(family="sans-serif", size=8)),
-            height=600  # Adjust the height as needed
+            height=600,  # Adjust the height as needed
+            template='plotly_white',  # Use a cleaner template
+            hovermode='x unified'  # Better hover experience
+        )
+        
+        # Configure axes
+        fig.update_xaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgrey',
+            zeroline=False
+        )
+        
+        fig.update_yaxes(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgrey',
+            zeroline=False
         )
 
         # Calculate performance percentage - safely handle empty data
@@ -1158,7 +1307,7 @@ if selected == 'OHCL Single Asset':
                 first_close = stock_data['Close'].iloc[0]
                 last_close = stock_data['Close'].iloc[-1]
                 perf_percent = round((last_close / first_close - 1.0) * 100, 1)
-                fig.update_layout(title=f'{symbol} OHLC Chart - Performance: {perf_percent}%', xaxis_rangeslider_visible=False)
+                fig.update_layout(title=f'{symbol} OHLC Chart - Performance: Ticker {symbol} {perf_percent}%', xaxis_rangeslider_visible=False)
             except (IndexError, ZeroDivisionError) as e:
                 # Handle potential errors
                 st.warning(f"Could not calculate performance: {str(e)}")
@@ -1166,10 +1315,32 @@ if selected == 'OHCL Single Asset':
         else:
             fig.update_layout(title=f'{symbol} OHLC Chart - No data available', xaxis_rangeslider_visible=False)
         #fig.update_layout(autosize=True)
-        st.plotly_chart(fig, use_container_width=True)
+        # Display the chart with increased size
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
+        
+        # Add debugging information
+        with st.expander("Debug Information"):
+            if not stock_data.empty:
+                sample_data = {}
+                for col in stock_data.columns:
+                    if col in ['Open', 'High', 'Low', 'Close']:
+                        sample_data[col] = stock_data[col].iloc[0] if len(stock_data) > 0 else 'N/A'
+                
+                st.write({
+                    "Symbol": symbol,
+                    "Data Shape": stock_data.shape,
+                    "Date Range": f"{stock_data.index.min()} to {stock_data.index.max()}",
+                    "OHLC Sample": sample_data
+                })
+            else:
+                st.write({
+                    "Symbol": symbol,
+                    "Data": "No data available"
+                })
         
     # Fix the truth value error by properly comparing DataFrames
     # Find the index of the selected dropdown value in pairs
+    # Wrap the entire chart generation in a try-except block to catch all errors
     try:
         # For crypto tickers ending with USDT, convert to Yahoo Finance format
         if dropdown.endswith('USDT'):
@@ -1177,25 +1348,32 @@ if selected == 'OHCL Single Asset':
             base_currency = dropdown.replace('USDT', '')
             # Create the proper Yahoo Finance ticker format
             yahoo_ticker = f"{base_currency}-USD"
+            st.info(f"Processing {dropdown} as {yahoo_ticker} for Yahoo Finance")
             # Generate the chart with the proper display name and Yahoo ticker format
             generate_ohlc_chartplotly(f"{base_currency}/USD", yahoo_ticker, start=start, end=end)
         else:
             # For regular assets, use the index lookup method
-            index_of_selected = pairs.index(dropdown)
-            # Use the index to get the corresponding data
-            datafiltered = pairs2[index_of_selected]
-            # Generate the chart
-            generate_ohlc_chartplotly(dropdown, datafiltered, start=start, end=end)
-    except ValueError:
-        st.error(f"Could not find data for {dropdown}. Available tickers: {', '.join(pairs[:5])}...")
+            try:
+                index_of_selected = pairs.index(dropdown)
+                # Use the index to get the corresponding data
+                datafiltered = pairs2[index_of_selected]
+                # Generate the chart
+                generate_ohlc_chartplotly(dropdown, datafiltered, start=start, end=end)
+            except ValueError:
+                st.error(f"Could not find data for {dropdown}. Available tickers: {', '.join(pairs[:5])}...")
+            except IndexError:
+                st.error(f"Index error accessing data for {dropdown}. Check that pairs and pairs2 have matching lengths.")
     except Exception as e:
         st.error(f"Error generating chart: {str(e)}")
         # Add debugging information
-        st.expander("Debug Information").write({
-            "Selected Ticker": dropdown,
-            "Ticker Type": type(dropdown).__name__,
-            "Sample Available Tickers": pairs[:5] if len(pairs) > 5 else pairs
-        })
+        with st.expander("Debug Information"):
+            st.write({
+                "Selected Ticker": dropdown,
+                "Ticker Type": type(dropdown).__name__,
+                "Error Type": type(e).__name__,
+                "Error Message": str(e),
+                "Sample Available Tickers": [str(p) for p in (pairs[:5] if len(pairs) > 5 else pairs)]
+            })
 
 # The sizeof_number function has been moved above the plot_grouped_bar_chart_with_calculation function
 
