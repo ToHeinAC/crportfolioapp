@@ -26,10 +26,14 @@ ad.user_cache_dir = lambda *args: "/tmp"
 #start app
 st.title('Crypto Dashboard :rocket:')
 
+# Initialize session state for debugging toggle if it doesn't exist
+if 'show_debug_info' not in st.session_state:
+    st.session_state.show_debug_info = False
+
 with st.sidebar:
     selected = option_menu(
         menu_title="Main Menu",
-        options=["Portfolio","Asset Cats Analysis","OHCL Single Asset"]
+        options=["Portfolio","Asset Cats Analysis","OHCL Single Asset","Options"]
     )
 
 @st.cache_data(show_spinner=False, ttl = 3600)
@@ -334,8 +338,9 @@ def get_data2(pairs, period='max'):
             percent_complete = 1.0            
         my_bar.progress(percent_complete, text=progress_text+f'...{round(percent_complete*100,1)}%')
     
-    # Display debug information
-    st.expander("Data Retrieval Debug Info").write(debug_info)
+    # Display debug information only if enabled in options
+    if st.session_state.show_debug_info:
+        st.expander("Data Retrieval Debug Info").write(debug_info)
     
     my_bar.progress(1.0, text="Finished...(fetch the data)...100%")
     return data
@@ -986,6 +991,17 @@ if selected == 'Asset Cats Analysis':
             plot_sparkline(portvalues.to_frame())
     
     
+if selected == 'Options':
+    st.header("Options :gear:")
+    
+    # Create a toggle for showing debugging information
+    debug_toggle = st.toggle("Show debugging info", value=st.session_state.show_debug_info)
+    
+    # Update session state based on toggle value
+    if debug_toggle != st.session_state.show_debug_info:
+        st.session_state.show_debug_info = debug_toggle
+        st.rerun()  # Rerun the app to apply the change
+
 if selected == 'OHCL Single Asset':
     st.header("OHLC Chart Single Asset :eyeglasses:")
     
@@ -1032,28 +1048,30 @@ if selected == 'OHCL Single Asset':
                     # Convert SOLUSDT to SOL-USD format for Yahoo Finance
                     base_currency = data.replace('USDT', '')
                     yahoo_ticker = f"{base_currency}-USD"
-                    st.info(f"Converting {data} to Yahoo Finance format: {yahoo_ticker}")
+                    if st.session_state.show_debug_info:
+                        st.info(f"Converting {data} to Yahoo Finance format: {yahoo_ticker}")
                     # Download data using the correct Yahoo Finance format
                     crypto_data = yf.download(yahoo_ticker, start=start, end=end, progress=False, interval='1d')
                     
                     # Handle MultiIndex columns if present
                     if isinstance(crypto_data.columns, pd.MultiIndex):
-                        st.info("Converting MultiIndex columns to flat columns")
+                        if st.session_state.show_debug_info:
+                            st.info("Converting MultiIndex columns to flat columns")
                         # Convert MultiIndex to flat index by taking the first level
                         crypto_data.columns = [col[0] for col in crypto_data.columns]
                     
                     # Print the columns to debug
-                    if not crypto_data.empty:
+                    if not crypto_data.empty and st.session_state.show_debug_info:
                         try:
                             column_list = [str(col) for col in crypto_data.columns.tolist()]
                             st.write(f"Columns from Yahoo Finance: {column_list}")
                         except Exception as e:
                             st.warning(f"Could not display columns: {str(e)}")
-                    else:
+                    elif crypto_data.empty and st.session_state.show_debug_info:
                         st.warning(f"No data returned from Yahoo Finance for {yahoo_ticker}")
                     
                     # Ensure all required columns exist
-                    if not crypto_data.empty:
+                    if not crypto_data.empty and st.session_state.show_debug_info:
                         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
                         try:
                             missing_cols = [col for col in required_cols if col not in crypto_data.columns]
@@ -1064,7 +1082,8 @@ if selected == 'OHCL Single Asset':
                     
                     # If no data, try CoinGecko API as fallback
                     if crypto_data.empty:
-                        st.info(f"No data from Yahoo Finance. Trying CoinGecko API...")
+                        if st.session_state.show_debug_info:
+                            st.info(f"No data from Yahoo Finance. Trying CoinGecko API...")
                         try:
                             # Extract the base currency (e.g., 'SOL' from 'SOLUSDT')
                             base_currency = data.replace('USDT', '').lower()
@@ -1160,7 +1179,8 @@ if selected == 'OHCL Single Asset':
             stock_data = data.loc[mask].copy()
             
             # Debug information
-            st.info(f"Data shape after filtering: {stock_data.shape}")
+            if st.session_state.show_debug_info:
+                st.info(f"Data shape after filtering: {stock_data.shape}")
             
             if stock_data.empty:
                 st.warning(f"No data available for {symbol} in the selected date range.")
@@ -1173,15 +1193,17 @@ if selected == 'OHCL Single Asset':
         fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.015, row_heights=[0.6, 0.2, 0.2])
 
         # Debug information - show data columns
-        try:
-            column_list = [str(col) for col in stock_data.columns.tolist()]
-            st.info(f"Available columns: {', '.join(column_list)}")
-        except Exception as e:
-            st.warning(f"Could not display columns: {str(e)}")
+        if st.session_state.show_debug_info:
+            try:
+                column_list = [str(col) for col in stock_data.columns.tolist()]
+                st.info(f"Available columns: {', '.join(column_list)}")
+            except Exception as e:
+                st.warning(f"Could not display columns: {str(e)}")
         
         # Handle MultiIndex columns if present
         if isinstance(stock_data.columns, pd.MultiIndex):
-            st.info("Converting MultiIndex columns to flat columns")
+            if st.session_state.show_debug_info:
+                st.info("Converting MultiIndex columns to flat columns")
             # Convert MultiIndex to flat index by taking the first level
             stock_data.columns = [col[0] if isinstance(col, tuple) else col for col in stock_data.columns]
         
@@ -1193,25 +1215,28 @@ if selected == 'OHCL Single Asset':
                 stock_data[col] = pd.to_numeric(stock_data[col], errors='coerce')
                 numeric_columns.append(col)
         
-        try:
-            if numeric_columns:
-                st.info(f"Converted to numeric: {', '.join(numeric_columns)}")
-            else:
-                st.warning("No numeric columns were found or converted")
-        except Exception as e:
-            st.warning(f"Could not display numeric columns: {str(e)}")
+        if st.session_state.show_debug_info:
+            try:
+                if numeric_columns:
+                    st.info(f"Converted to numeric: {', '.join(numeric_columns)}")
+                else:
+                    st.warning("No numeric columns were found or converted")
+            except Exception as e:
+                st.warning(f"Could not display numeric columns: {str(e)}")
         
         # Check if we have all required columns for candlestick
         required_cols = ['Open', 'High', 'Low', 'Close']
         missing_cols = [col for col in required_cols if col not in stock_data.columns]
         
         # Debug the column names
-        st.info(f"Column types: {[type(col).__name__ for col in stock_data.columns]}")
-        st.info(f"Checking for columns: {required_cols}")
-        st.info(f"Available columns: {list(stock_data.columns)}")
+        if st.session_state.show_debug_info:
+            st.info(f"Column types: {[type(col).__name__ for col in stock_data.columns]}")
+            st.info(f"Checking for columns: {required_cols}")
+            st.info(f"Available columns: {list(stock_data.columns)}")
         
         if missing_cols:
-            st.error(f"Missing required columns for candlestick chart: {missing_cols}")
+            if st.session_state.show_debug_info:
+                st.error(f"Missing required columns for candlestick chart: {missing_cols}")
             # If we're missing columns, use a line chart instead
             fig.add_trace(go.Scatter(
                 x=stock_data.index,
@@ -1258,7 +1283,7 @@ if selected == 'OHCL Single Asset':
             fig.add_trace(go.Bar(x=stock_data.index, y=stock_data['Volume'], name='Volume', marker_color='purple'), row=2, col=1)
             if 'V_EMA_5' in stock_data.columns:
                 fig.add_trace(go.Scatter(x=stock_data.index, y=stock_data['V_EMA_5'], mode='lines', name='V_EMA_5', line=dict(color='black', width=1)), row=2, col=1)
-        else:
+        elif st.session_state.show_debug_info:
             st.warning("No volume data available for this asset")
 
         # Add RSI subplot to the third subplot if RSI data exists
@@ -1269,7 +1294,7 @@ if selected == 'OHCL Single Asset':
             if not stock_data.empty:
                 fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=30, y1=30, row=3, col=1, line=dict(color='green', width=2), name='RSI 30')
                 fig.add_shape(type='line', x0=stock_data.index.min(), x1=stock_data.index.max(), y0=70, y1=70, row=3, col=1, line=dict(color='red', width=2), name='RSI 70')
-        else:
+        elif st.session_state.show_debug_info:
             st.warning("No RSI data available for this asset")
 
         # Update layout
@@ -1310,7 +1335,8 @@ if selected == 'OHCL Single Asset':
                 fig.update_layout(title=f'{symbol} OHLC Chart - Performance: Ticker {symbol} {perf_percent}%', xaxis_rangeslider_visible=False)
             except (IndexError, ZeroDivisionError) as e:
                 # Handle potential errors
-                st.warning(f"Could not calculate performance: {str(e)}")
+                if st.session_state.show_debug_info:
+                    st.warning(f"Could not calculate performance: {str(e)}")
                 fig.update_layout(title=f'{symbol} OHLC Chart', xaxis_rangeslider_visible=False)
         else:
             fig.update_layout(title=f'{symbol} OHLC Chart - No data available', xaxis_rangeslider_visible=False)
@@ -1319,24 +1345,25 @@ if selected == 'OHCL Single Asset':
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
         
         # Add debugging information
-        with st.expander("Debug Information"):
-            if not stock_data.empty:
-                sample_data = {}
-                for col in stock_data.columns:
-                    if col in ['Open', 'High', 'Low', 'Close']:
-                        sample_data[col] = stock_data[col].iloc[0] if len(stock_data) > 0 else 'N/A'
-                
-                st.write({
-                    "Symbol": symbol,
-                    "Data Shape": stock_data.shape,
-                    "Date Range": f"{stock_data.index.min()} to {stock_data.index.max()}",
-                    "OHLC Sample": sample_data
-                })
-            else:
-                st.write({
-                    "Symbol": symbol,
-                    "Data": "No data available"
-                })
+        if st.session_state.show_debug_info:
+            with st.expander("Debug Information"):
+                if not stock_data.empty:
+                    sample_data = {}
+                    for col in stock_data.columns:
+                        if col in ['Open', 'High', 'Low', 'Close']:
+                            sample_data[col] = stock_data[col].iloc[0] if len(stock_data) > 0 else 'N/A'
+                    
+                    st.write({
+                        "Symbol": symbol,
+                        "Data Shape": stock_data.shape,
+                        "Date Range": f"{stock_data.index.min()} to {stock_data.index.max()}",
+                        "OHLC Sample": sample_data
+                    })
+                else:
+                    st.write({
+                        "Symbol": symbol,
+                        "Data": "No data available"
+                    })
         
     # Fix the truth value error by properly comparing DataFrames
     # Find the index of the selected dropdown value in pairs
@@ -1348,7 +1375,8 @@ if selected == 'OHCL Single Asset':
             base_currency = dropdown.replace('USDT', '')
             # Create the proper Yahoo Finance ticker format
             yahoo_ticker = f"{base_currency}-USD"
-            st.info(f"Processing {dropdown} as {yahoo_ticker} for Yahoo Finance")
+            if st.session_state.show_debug_info:
+                st.info(f"Processing {dropdown} as {yahoo_ticker} for Yahoo Finance")
             # Generate the chart with the proper display name and Yahoo ticker format
             generate_ohlc_chartplotly(f"{base_currency}/USD", yahoo_ticker, start=start, end=end)
         else:
@@ -1360,7 +1388,10 @@ if selected == 'OHCL Single Asset':
                 # Generate the chart
                 generate_ohlc_chartplotly(dropdown, datafiltered, start=start, end=end)
             except ValueError:
-                st.error(f"Could not find data for {dropdown}. Available tickers: {', '.join(pairs[:5])}...")
+                if st.session_state.show_debug_info:
+                    st.error(f"Could not find data for {dropdown}. Available tickers: {', '.join(pairs[:5])}...")
+                else:
+                    st.error(f"Could not find data for {dropdown}.")
             except IndexError:
                 st.error(f"Index error accessing data for {dropdown}. Check that pairs and pairs2 have matching lengths.")
     except Exception as e:
