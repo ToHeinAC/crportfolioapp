@@ -173,7 +173,8 @@ crypto_mapping = {
     'BCH': 'bitcoin-cash',
     'ALGO': 'algorand',
     'NEAR': 'near',
-    'RENDER': 'render-token'
+    'RENDER': 'render-token',
+    'CRO': 'cronos'
 }
 
 #app
