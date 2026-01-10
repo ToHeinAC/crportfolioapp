@@ -56,12 +56,13 @@ with st.expander("Portfolio Data File"):
     upload = st.file_uploader('Upload the portfolio assets .xlsx file!')
     if upload is None:
         st.info("Upload a assets .xlsx file", icon = 'ℹ️')
-        st.stop()
-
-    if upload is not None:
+    else:
         st.success('File uploaded successfully!')
+
+if upload is None:
+    st.stop()
         
-    assets = load_assets(upload)    
+assets = load_assets(upload)    
     
 coins = [str(assets.index[i]) for i in range(len(assets.index))]
 pairs = [coins[i] + 'USDT' for i in range(len(coins))]
