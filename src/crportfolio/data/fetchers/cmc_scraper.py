@@ -52,6 +52,7 @@ CMC_SLUG_MAPPING = {
     "UNI": "uniswap",
     "NEAR": "near-protocol",
     "RENDER": "render",
+    "TAO": "bittensor",
 }
 
 

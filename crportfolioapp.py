@@ -76,12 +76,12 @@ def replace_entry_by_name(lst, name_to_replace, new_entry):
     
 pairs2 = replace_entry_by_name(pairs2, 'SUPER-USD', 'SUPER8290-USD')
 pairs2 = replace_entry_by_name(pairs2, 'PRIME-USD', 'PRIME23711-USD')
-pairs2 = replace_entry_by_name(pairs2, 'TIA-USD', 'TIA22861-USD')
 pairs2 = replace_entry_by_name(pairs2, 'FORT-USD', 'FORT20622-USD')
 pairs2 = replace_entry_by_name(pairs2, 'JUP-USD', 'JUP29210-USD')
 pairs2 = replace_entry_by_name(pairs2, 'SUI-USD', 'SUI20947-USD')
 pairs2 = replace_entry_by_name(pairs2, 'APT-USD', 'APT21794-USD')
 pairs2 = replace_entry_by_name(pairs2, 'BANANA-USD', 'BANANA28066-USD')
+pairs2 = replace_entry_by_name(pairs2, 'TAO-USD', 'TAO22974-USD')
 
 assets['Invest $']=assets['Anzahl']*assets['Kaufpreis $']
 
@@ -223,11 +223,11 @@ def get_data2(pairs, period='max'):
             for retry in range(max_retries):
                 try:
                     if item == 'RENDER-USD': 
-                        fetch = yf.download(item, period='5d', progress=False)  # Disable progress to reduce output noise
+                        fetch = yf.download(item, period='5d', progress=False, auto_adjust=True)  # Disable progress to reduce output noise
                         if len(fetch) <= 1:
                             fetch = extend_dataframe_with_same_dates(fetch)
                     else:
-                        fetch = yf.download(item, period=period, progress=False)  # Disable progress to reduce output noise
+                        fetch = yf.download(item, period=period, progress=False, auto_adjust=True)  # Disable progress to reduce output noise
                     break  # If successful, break out of retry loop
                 except Exception as retry_e:
                     if 'Rate limit' in str(retry_e) and retry < max_retries - 1:
@@ -474,7 +474,7 @@ def plot_investment(actual_value, invest_value, plot_width, plot_height):
     )
 
     fig = go.Figure(data=trace, layout=layout)
-    st.plotly_chart(fig ,use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 def plot_port_assetcat(df, sortcol, highest=10, category=None):
     # Make a copy of the dataframe to avoid modifying the original
@@ -588,13 +588,13 @@ def plot_port_assetcat(df, sortcol, highest=10, category=None):
     # Show plot
     if len(df_sorted)<11:
         fig.update_layout(height=500)
-        st.plotly_chart(fig ,use_container_width=True,height=500)
+        st.plotly_chart(fig, width="stretch")
     elif len(df_sorted)<21:
         fig.update_layout(height=30*len(df_sorted))  # Use actual length instead of highest which could be "all"
-        st.plotly_chart(fig ,use_container_width=True,height=30*len(df_sorted))
+        st.plotly_chart(fig, width="stretch")
     else: #all
         fig.update_layout(height=1000)
-        st.plotly_chart(fig ,use_container_width=True,height=1000)
+        st.plotly_chart(fig, width="stretch")
     
 def get_close_price_for_period(dataframe, period):
     end_date = dataframe.index[-1]  # Get the latest date in the dataframe
@@ -607,19 +607,35 @@ def get_close_price_for_period(dataframe, period):
     
 def aggregate_specific_column(dataframes_list, column_name, ticker_list):
     aggregated_column = pd.DataFrame()  # Create an empty dataframe to aggregate the column data
+    columns_data = {}  # Store column data by ticker to maintain order
+    
     asset_num=0
     for dataframe in dataframes_list:
-        if column_name in dataframe.columns:
+        ticker = ticker_list[asset_num] if asset_num < len(ticker_list) else f"asset_{asset_num}"
+        if not dataframe.empty and column_name in dataframe.columns:
             # Check if dataframe[column_name] is already a DataFrame or a Series
             if isinstance(dataframe[column_name], pd.Series):
-                column_data = dataframe[column_name].to_frame()  # Convert Series to DataFrame
+                columns_data[ticker] = dataframe[column_name]
             else:
                 # If it's already a DataFrame, just select the column
-                column_data = dataframe[[column_name]]
-                
-            column_data.columns = [f'{ticker_list[asset_num]}']  # Rename the column uniquely
-            aggregated_column = pd.concat([aggregated_column, column_data], axis=1)  # Concatenate the column to the new dataframe
+                columns_data[ticker] = dataframe[column_name].iloc[:, 0] if len(dataframe[column_name].columns) > 0 else dataframe[column_name]
+        else:
+            # Mark as missing - will be filled with 0 later
+            columns_data[ticker] = None
         asset_num+=1
+    
+    # Build the aggregated DataFrame maintaining ticker order
+    for ticker in ticker_list:
+        if ticker in columns_data and columns_data[ticker] is not None:
+            if aggregated_column.empty:
+                aggregated_column = columns_data[ticker].to_frame(name=ticker)
+            else:
+                aggregated_column[ticker] = columns_data[ticker]
+        else:
+            # Fill missing data with 0 (so multiplication works)
+            if not aggregated_column.empty:
+                aggregated_column[ticker] = 0.0
+    
     return aggregated_column
     
 def multiply_row_elements_and_sum(df, row_index, multiplier_list):
@@ -659,7 +675,7 @@ def plot_sparkline(data):
     fig.add_annotation(x=data.index[0], y=first_price, text=f'{first_price_int} $', showarrow=True, arrowhead=1)
     fig.add_annotation(x=data.index[-1], y=last_price, text=f'{last_price_int} $', showarrow=True, arrowhead=1)        
     #fig.update_layout(xaxis_title=f'Portfolio last {len(data)} days', yaxis_title='')
-    st.plotly_chart(fig ,use_container_width=True)  
+    st.plotly_chart(fig, width="stretch")  
 
 # Function to format values with K (thousands), M (millions), B (billions) suffixes
 def sizeof_number(number, currency=None):
@@ -733,7 +749,7 @@ def plot_grouped_bar_chart_with_calculation(dataframe, category_column, quantity
     fig.update_layout(title='Total Value by Category - Stacked',
                       xaxis_title='Category', yaxis_title='Total Value $',
                       barmode='stack', width=800, height=400)
-    st.plotly_chart(fig ,use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
 def create_custom_treemap(df, category_column, value_column, gainloss_column):
     # Make a copy of the dataframe to avoid modifying the original
@@ -762,7 +778,7 @@ def create_custom_treemap(df, category_column, value_column, gainloss_column):
                      color_continuous_scale='RdYlGn',
                      color_continuous_midpoint=0)
     fig.update_layout(margin=dict(t=50, l=25, r=25, b=25))
-    st.plotly_chart(fig ,use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
 def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date):
     # Filter data based on input date range
@@ -789,7 +805,7 @@ def calculate_asset_value_and_plot(prices_df, portfolio_df, start_date, end_date
                   title='Time Evolution of Asset Categories', color_discrete_map=cm)
     
     fig.update_layout(xaxis_title='Date', yaxis_title='Asset Value Gain/Loss Multiplier')
-    st.plotly_chart(fig ,use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     
 #app
 if selected == 'Portfolio':
@@ -850,7 +866,7 @@ for i, symbol in zip(data, pairs2):
             lastmonth.append(float(last_month_value.iloc[0] if isinstance(last_month_value, pd.Series) else last_month_value))
         else:
             # If data is empty or missing Close column, try to fetch it again
-            retry_data = yf.download(symbol, period='7d')
+            retry_data = yf.download(symbol, period='7d', auto_adjust=True)
             if not retry_data.empty and 'Close' in retry_data.columns:
                 # Extract scalar values from Series objects using the recommended approach
                 lastprices.append(float(retry_data['Close'].iloc[-1].iloc[0] if isinstance(retry_data['Close'].iloc[-1], pd.Series) else retry_data['Close'].iloc[-1]))
@@ -1099,7 +1115,7 @@ if selected == 'OHCL Single Asset':
                     if st.session_state.show_debug_info:
                         st.info(f"Converting {data} to Yahoo Finance format: {yahoo_ticker}")
                     # Download data using the correct Yahoo Finance format
-                    crypto_data = yf.download(yahoo_ticker, start=start, end=end, progress=False, interval='1d')
+                    crypto_data = yf.download(yahoo_ticker, start=start, end=end, progress=False, interval='1d', auto_adjust=True)
                     
                     # Handle MultiIndex columns if present
                     if isinstance(crypto_data.columns, pd.MultiIndex):
@@ -1187,7 +1203,7 @@ if selected == 'OHCL Single Asset':
                     data = crypto_data
                 else:
                     # For non-crypto assets, use yfinance directly
-                    data = yf.download(data, start=start, end=end)
+                    data = yf.download(data, start=start, end=end, auto_adjust=True)
                     
                 if data.empty:
                     st.error(f"No data available for {symbol}")
@@ -1390,7 +1406,7 @@ if selected == 'OHCL Single Asset':
             fig.update_layout(title=f'{symbol} OHLC Chart - No data available', xaxis_rangeslider_visible=False)
         #fig.update_layout(autosize=True)
         # Display the chart with increased size
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': True})
+        st.plotly_chart(fig, width="stretch", config={'displayModeBar': True})
         
         # Add debugging information
         if st.session_state.show_debug_info:

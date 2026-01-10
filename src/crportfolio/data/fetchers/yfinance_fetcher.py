@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 YFINANCE_TICKER_MAPPING = {
     "SUPER": "SUPER8290-USD",
     "PRIME": "PRIME23711-USD",
-    "TIA": "TIA22861-USD",
     "FORT": "FORT20622-USD",
     "JUP": "JUP29210-USD",
     "SUI": "SUI20947-USD",
     "APT": "APT21794-USD",
     "BANANA": "BANANA28066-USD",
+    "TAO": "TAO22974-USD",
 }
 
 
@@ -82,7 +82,7 @@ class YFinanceFetcher(BaseFetcher):
                 # Determine period or date range
                 if start_date is None:
                     # Fetch maximum history
-                    df = yf.download(ticker, period="max", progress=False)
+                    df = yf.download(ticker, period="max", progress=False, auto_adjust=True)
                 else:
                     start_str = start_date.strftime("%Y-%m-%d")
                     end_str = (
@@ -90,7 +90,7 @@ class YFinanceFetcher(BaseFetcher):
                         if end_date
                         else datetime.now().strftime("%Y-%m-%d")
                     )
-                    df = yf.download(ticker, start=start_str, end=end_str, progress=False)
+                    df = yf.download(ticker, start=start_str, end=end_str, progress=False, auto_adjust=True)
 
                 # Handle multi-level columns from yfinance
                 if isinstance(df.columns, pd.MultiIndex):
@@ -136,7 +136,7 @@ class YFinanceFetcher(BaseFetcher):
 
         try:
             # Fetch last 5 days to ensure we get data
-            df = yf.download(ticker, period="5d", progress=False)
+            df = yf.download(ticker, period="5d", progress=False, auto_adjust=True)
 
             # Handle multi-level columns
             if isinstance(df.columns, pd.MultiIndex):

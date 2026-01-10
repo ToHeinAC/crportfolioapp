@@ -64,6 +64,7 @@ COINGECKO_ID_MAPPING = {
     "NEAR": "near",
     "RENDER": "render-token",
     "CRO": "cronos",
+    "TAO": "bittensor",
 }
 
 

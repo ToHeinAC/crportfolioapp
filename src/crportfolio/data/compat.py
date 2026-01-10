@@ -107,6 +107,16 @@ def fetch_crypto_data(
             df = orchestrator.get_ohlc(clean_symbol, start_date, end_date)
 
             if not df.empty:
+                # Normalize column names to match legacy format (uppercase)
+                column_mapping = {
+                    "open": "Open",
+                    "high": "High",
+                    "low": "Low",
+                    "close": "Close",
+                    "volume": "Volume",
+                }
+                df.rename(columns=column_mapping, inplace=True)
+                
                 # Ensure we have standard column names
                 if "Adj Close" not in df.columns and "Close" in df.columns:
                     df["Adj Close"] = df["Close"]
