@@ -1,0 +1,53 @@
+[project]
+name = "crportfolioapp"
+version = "1.0.0"
+description = "Streamlit Crypto Portfolio Dashboard - Track and analyze cryptocurrency portfolios"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Tobias Hein" }
+]
+
+dependencies = [
+    "streamlit>=1.28.2",
+    "streamlit-option-menu>=0.3.6",
+    "pandas>=2.1.3",
+    "plotly>=5.18.0",
+    "matplotlib>=3.8.2",
+    "yfinance>=0.2.61,<1.0",  # Pin to avoid curl-cffi dependency in v1.0
+    "pycoingecko>=3.2.0",
+    "sqlalchemy>=2.0.23",
+    "openpyxl>=3.1.2",
+    "appdirs>=1.4.4",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+]
+binance = [
+    "python-binance>=0.7.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

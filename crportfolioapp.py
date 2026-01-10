@@ -12,8 +12,19 @@ import yfinance as yf
 import appdirs as ad
 import requests
 from pycoingecko import CoinGeckoAPI
-#from pandas_datareader import data as pdr
-#yf.pdr_override() # <== that's all it takes :-)
+import sys
+from pathlib import Path
+
+# Add src directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+# Import new data layer (with fallback to legacy mode)
+USE_NEW_DATA_LAYER = True
+try:
+    from crportfolio.data.compat import fetch_crypto_data, get_db_stats, get_orchestrator
+except ImportError as e:
+    USE_NEW_DATA_LAYER = False
+    print(f"Warning: New data layer not available, using legacy mode: {e}")
 
 binance=False
 if binance:
@@ -803,7 +814,16 @@ lb = (today-fstart).days
 
 if binance:
     data = get_data(pairs,fstart,str(lb))
+elif USE_NEW_DATA_LAYER:
+    # Use new data layer with SQLite caching
+    data = fetch_crypto_data(
+        pairs2,
+        period='max',
+        show_progress=True,
+        debug_mode=st.session_state.show_debug_info
+    )
 else:
+    # Legacy mode
     data = get_data2(pairs2)
 
 #if st.button("Clear All Cache"):
@@ -994,14 +1014,40 @@ if selected == 'Asset Cats Analysis':
     
 if selected == 'Options':
     st.header("Options :gear:")
-    
+
     # Create a toggle for showing debugging information
     debug_toggle = st.toggle("Show debugging info", value=st.session_state.show_debug_info)
-    
+
     # Update session state based on toggle value
     if debug_toggle != st.session_state.show_debug_info:
         st.session_state.show_debug_info = debug_toggle
         st.rerun()  # Rerun the app to apply the change
+
+    # Database statistics section (new data layer)
+    if USE_NEW_DATA_LAYER:
+        st.subheader("Database Statistics")
+        try:
+            db_stats = get_db_stats()
+            if db_stats.get("initialized"):
+                col1, col2 = st.columns(2)
+                col1.metric("Cached Symbols", db_stats.get("total_symbols", 0))
+                col2.write(f"DB Path: `{db_stats.get('db_path', 'N/A')}`")
+
+                if db_stats.get("symbols"):
+                    with st.expander("Cached Symbols"):
+                        st.write(", ".join(db_stats["symbols"]))
+            else:
+                st.info("Database not yet initialized. Data will be cached after first fetch.")
+        except Exception as e:
+            st.warning(f"Could not get database stats: {e}")
+
+        # Clear cache button
+        if st.button("Clear Data Cache"):
+            st.cache_data.clear()
+            st.success("Cache cleared! Data will be re-fetched on next load.")
+            st.rerun()
+    else:
+        st.info("Using legacy data layer (new SQLite caching not available)")
 
 if selected == 'OHCL Single Asset':
     st.header("OHLC Chart Single Asset :eyeglasses:")

@@ -1,7 +1,43 @@
-# .gitignore
-stvenv
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+stvenv/
+ENV/
+
+# UV
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter
 *.ipynb
+.ipynb_checkpoints/
+
+# Database
 *.db
+
+# User data (not tracked)
 crassets.xlsx
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/

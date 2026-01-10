@@ -1,7 +1,9 @@
 {
-  "name": "Python 3",
-  // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+  "name": "Crypto Portfolio App (UV)",
   "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bullseye",
+  "features": {
+    "ghcr.io/astral-sh/uv:latest": {}
+  },
   "customizations": {
     "codespaces": {
       "openFiles": [
@@ -10,16 +12,19 @@
       ]
     },
     "vscode": {
-      "settings": {},
+      "settings": {
+        "python.defaultInterpreterPath": ".venv/bin/python"
+      },
       "extensions": [
         "ms-python.python",
-        "ms-python.vscode-pylance"
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff"
       ]
     }
   },
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'",
+  "updateContentCommand": "uv sync && echo '✅ Dependencies installed with uv'",
   "postAttachCommand": {
-    "server": "streamlit run crportfolioapp.py --server.enableCORS false --server.enableXsrfProtection false"
+    "server": "uv run streamlit run crportfolioapp.py --server.enableCORS false --server.enableXsrfProtection false"
   },
   "portsAttributes": {
     "8501": {
@@ -27,7 +32,5 @@
       "onAutoForward": "openPreview"
     }
   },
-  "forwardPorts": [
-    8501
-  ]
+  "forwardPorts": [8501]
 }
