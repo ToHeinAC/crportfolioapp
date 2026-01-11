@@ -8,10 +8,22 @@ cd "$(dirname "$0")/.."
 
 echo "Syncing dependencies from pyproject.toml to requirements.txt..."
 
-# Export and filter out the editable install line (-e .) which Streamlit Cloud doesn't support
-uv export --no-dev --no-hashes | grep -v "^-e \." > requirements.txt
+# Export dependencies from uv, then clean up for Streamlit Cloud:
+# - Remove editable install line (-e .)
+# - Remove comment lines (starting with #)
+# - Remove indented comment lines (e.g., "    # via streamlit")
+# - Remove blank lines
+# - Remove platform-specific markers that may cause issues
+uv export --no-dev --no-hashes | \
+    grep -v "^-e \." | \
+    grep -v "^#" | \
+    grep -v "^[[:space:]]*#" | \
+    grep -v "^[[:space:]]*$" \
+    > requirements.txt
 
 echo "requirements.txt has been updated from pyproject.toml"
 echo ""
-echo "First 20 lines:"
+echo "Package count: $(wc -l < requirements.txt | tr -d ' ')"
+echo ""
+echo "First 20 packages:"
 head -20 requirements.txt

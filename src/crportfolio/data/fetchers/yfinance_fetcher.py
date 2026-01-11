@@ -3,12 +3,18 @@ Yahoo Finance data fetcher implementation.
 """
 
 import logging
+import os
 import random
 import time
 from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
+
+# Configure yfinance cache directory for Streamlit Cloud compatibility
+# Must be set before importing yfinance (for versions >= 0.2.29)
+os.environ.setdefault("YFINANCE_CACHE_DIR", "/tmp/yf_cache")
+
 import yfinance as yf
 
 from .base import BaseFetcher

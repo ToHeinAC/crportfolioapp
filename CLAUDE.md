@@ -124,10 +124,16 @@ SQLite database may reset on app restart in cloud deployments. Consider external
 
 ## Streamlit Cloud Deployment
 
+### Core Requirements
+
+- Public (or authorized private) GitHub repo with app code and `requirements.txt`
+- Entry point: `crportfolioapp.py` (selected in Streamlit Cloud UI)
+- All dependencies listed in `requirements.txt` (auto-generated from `pyproject.toml`)
+
 ### Requirements Management
 
 - **Source of truth**: `pyproject.toml` (managed by `uv`)
-- **Generated file**: `requirements.txt` (for Streamlit Cloud)
+- **Generated file**: `requirements.txt` (for Streamlit Cloud, clean format without comments)
 - **Sync command**: `./scripts/sync-requirements.sh`
 
 **Important**: Always run `./scripts/sync-requirements.sh` after changing dependencies in `pyproject.toml`. Streamlit Cloud reads `requirements.txt`, not `pyproject.toml`.
@@ -141,9 +147,34 @@ SQLite database may reset on app restart in cloud deployments. Consider external
 | `.streamlit/config.toml` | UI theme and server config |
 | `.streamlit/secrets.toml` | Local secrets (NOT committed, use Streamlit Cloud UI for production) |
 
-### yfinance Version Constraint
+### yfinance on Streamlit Cloud
 
-yfinance is pinned to `<0.2.58` because versions 0.2.58+ require `curl-cffi`, which has compilation issues on Streamlit Cloud. The fallback chain (CoinGecko, CoinMarketCap) handles any rate limiting on older yfinance versions.
+**Version constraint**: yfinance is pinned to `<0.2.58` because versions 0.2.58+ require `curl-cffi`, which has compilation issues on Streamlit Cloud.
+
+**Cache directory fix**: For yfinance >= 0.2.29, the cache directory must be set to a writable location. This is configured at app startup:
+
+```python
+import os
+os.environ["YFINANCE_CACHE_DIR"] = "/tmp/yf_cache"  # Writable on Streamlit Cloud
+```
+
+This is set in both `crportfolioapp.py` and `yfinance_fetcher.py` before importing yfinance.
+
+**Fallback chain**: CoinGecko and CoinMarketCap handle any rate limiting or data gaps from yfinance.
+
+### SQLite Database Handling
+
+The SQLite database (`crypto_prices.db`) is used as a **cache**, not primary storage:
+
+- Uses relative path (not absolute) for portability
+- Filesystem on Streamlit Cloud is **ephemeral**: writes may not persist across restarts
+- Database can be rebuilt on demand from API sources
+- Treat as read-only reference or rebuildable cache
+
+```python
+# Database uses relative path
+DatabaseManager(db_path="crypto_prices.db")
+```
 
 ### Deploy Checklist
 

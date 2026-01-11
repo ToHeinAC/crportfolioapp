@@ -1,3 +1,9 @@
+import os
+
+# Configure yfinance cache directory for Streamlit Cloud compatibility
+# Must be set before importing yfinance (for versions >= 0.2.29)
+os.environ["YFINANCE_CACHE_DIR"] = "/tmp/yf_cache"
+
 import streamlit as st
 from streamlit_option_menu import option_menu
 import pandas as pd
@@ -21,10 +27,23 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 # Import new data layer (with fallback to legacy mode)
 USE_NEW_DATA_LAYER = True
 try:
-    from crportfolio.data.compat import fetch_crypto_data, get_db_stats, get_orchestrator
+    from crportfolio.data.compat import (
+        fetch_crypto_data, 
+        get_db_stats, 
+        get_orchestrator,
+        get_deployment_info,
+        is_cloud_deployment,
+    )
 except ImportError as e:
     USE_NEW_DATA_LAYER = False
     print(f"Warning: New data layer not available, using legacy mode: {e}")
+    
+    # Fallback functions
+    def get_deployment_info():
+        return {"is_cloud": False, "sqlite_available": False}
+    
+    def is_cloud_deployment():
+        return False
 
 binance=False
 if binance:
@@ -1040,8 +1059,27 @@ if selected == 'Options':
         st.session_state.show_debug_info = debug_toggle
         st.rerun()  # Rerun the app to apply the change
 
-    # Database statistics section (new data layer)
+    # Deployment Information section
     if USE_NEW_DATA_LAYER:
+        st.subheader("Deployment Information")
+        try:
+            deploy_info = get_deployment_info()
+            col1, col2, col3 = st.columns(3)
+            
+            # Show deployment mode
+            if deploy_info.get("is_cloud"):
+                col1.metric("Mode", "☁️ Cloud")
+                col1.caption("Using in-memory caching")
+            else:
+                col1.metric("Mode", "💻 Local")
+                col1.caption("Using SQLite database")
+            
+            col2.metric("Default Period", deploy_info.get("default_period", "max"))
+            col3.metric("Cache TTL", f"{deploy_info.get('cache_ttl_seconds', 3600) // 60} min")
+            
+        except Exception as e:
+            st.warning(f"Could not get deployment info: {e}")
+        
         st.subheader("Database Statistics")
         try:
             db_stats = get_db_stats()
@@ -1054,7 +1092,11 @@ if selected == 'Options':
                     with st.expander("Cached Symbols"):
                         st.write(", ".join(db_stats["symbols"]))
             else:
-                st.info("Database not yet initialized. Data will be cached after first fetch.")
+                mode = db_stats.get("mode", "unknown")
+                if mode == "cloud":
+                    st.info("🌐 Running in cloud mode - using Streamlit's in-memory cache instead of SQLite database.")
+                else:
+                    st.info("Database not yet initialized. Data will be cached after first fetch.")
         except Exception as e:
             st.warning(f"Could not get database stats: {e}")
 
