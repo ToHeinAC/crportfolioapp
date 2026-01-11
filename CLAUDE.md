@@ -122,9 +122,41 @@ SQLite database may reset on app restart in cloud deployments. Consider external
 - Database caches indefinitely until cleared
 - Streamlit cache (1 hour TTL) for session
 
+## Streamlit Cloud Deployment
+
+### Requirements Management
+
+- **Source of truth**: `pyproject.toml` (managed by `uv`)
+- **Generated file**: `requirements.txt` (for Streamlit Cloud)
+- **Sync command**: `./scripts/sync-requirements.sh`
+
+**Important**: Always run `./scripts/sync-requirements.sh` after changing dependencies in `pyproject.toml`. Streamlit Cloud reads `requirements.txt`, not `pyproject.toml`.
+
+### Key Files for Deployment
+
+| File | Purpose |
+|------|---------|
+| `requirements.txt` | Dependencies (auto-generated, DO NOT edit manually) |
+| `runtime.txt` | Python version (currently 3.11) |
+| `.streamlit/config.toml` | UI theme and server config |
+| `.streamlit/secrets.toml` | Local secrets (NOT committed, use Streamlit Cloud UI for production) |
+
+### yfinance Version Constraint
+
+yfinance is pinned to `<0.2.58` because versions 0.2.58+ require `curl-cffi`, which has compilation issues on Streamlit Cloud. The fallback chain (CoinGecko, CoinMarketCap) handles any rate limiting on older yfinance versions.
+
+### Deploy Checklist
+
+1. Run `./scripts/sync-requirements.sh` to update requirements.txt
+2. Commit changes including updated requirements.txt
+3. Push to GitHub
+4. In Streamlit Cloud: configure secrets via the UI (not secrets.toml)
+5. Note: SQLite data is ephemeral on Streamlit Cloud (resets on restart)
+
 ## Security Considerations
 
 - No secrets stored in code
+- `.streamlit/secrets.toml` is gitignored
 - Excel files processed locally
 - No user authentication (single-user app)
 - Web scraper respects robots.txt

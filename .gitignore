@@ -33,6 +33,9 @@ crassets.xlsx
 .DS_Store
 Thumbs.db
 
+# Secrets (should be managed in Streamlit Cloud UI)
+.streamlit/secrets.toml
+
 # Temporary files
 *.tmp
 *.bak
